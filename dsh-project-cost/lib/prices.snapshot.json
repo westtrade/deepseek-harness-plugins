@@ -1,0 +1,3176 @@
+{
+ "source": "https://routerai.ru/api/v1/models",
+ "currency": "RUB",
+ "unit": "rub-per-token",
+ "fetchedAt": 1790504305942,
+ "models": {
+  "microsoft/mai-transcribe-2": {
+   "prompt": 10.964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-vector": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.7": {
+   "prompt": 0.000043857528,
+   "completion": 0.000191876685,
+   "cacheRead": 0.0000087715056,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.7-flash": {
+   "prompt": 0.0000032893146,
+   "completion": 0.0000142536966,
+   "cacheRead": 6.5786292e-7,
+   "cacheWrite": 0.00000416646516
+  },
+  "sakana/namazu": {
+   "prompt": 0.000104161629,
+   "completion": 0.00043857528,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-3.3-70b-instruct": {
+   "prompt": 0.000010964382,
+   "completion": 0.0000350860224,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "ibm-granite/granite-4.2-8b": {
+   "prompt": 0.000010964382,
+   "completion": 0.000016446573,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": null
+  },
+  "sourceful/riverflow-v2.5-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2.7-code": {
+   "prompt": 0.00007812122175,
+   "completion": 0.00032893146,
+   "cacheRead": 0.00001562424435,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-nemo": {
+   "prompt": 0.00000197358876,
+   "completion": 0.0000032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-pro-vector": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v3": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "yandex/gpt-pro-5": {
+   "prompt": 0.001559825876466,
+   "completion": 0.001559825876466,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "upstage/solar-pro4": {
+   "prompt": 0.0000098679438,
+   "completion": 0.0000394717752,
+   "cacheRead": 0.00000197358876,
+   "cacheWrite": null
+  },
+  "inclusionai/ling-3.0-flash": {
+   "prompt": 0.00000230252022,
+   "completion": 0.00000690756066,
+   "cacheRead": 4.60504044e-7,
+   "cacheWrite": null
+  },
+  "openai/gpt-oss-120b": {
+   "prompt": 0.0000032893146,
+   "completion": 0.0000186394494,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "typesafe/jev-1.13": {
+   "prompt": 0.00000460504044,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "inclusionai/ling-3.0-flash-fin": {
+   "prompt": 0.0000065786292,
+   "completion": 0.0000197358876,
+   "cacheRead": 0.00000131572584,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-30b-a3b": {
+   "prompt": 0.0000131572584,
+   "completion": 0.00005482191,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seedream-4.5": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-235b-a22b-thinking-2507": {
+   "prompt": 0.0000252180786,
+   "completion": 0.000252180786,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-imagine-image-quality": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.8-27b": {
+   "prompt": 0.000016446573,
+   "completion": 0.0002055821625,
+   "cacheRead": 0.00000411164325,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/lyria-3-pro-preview": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2.6": {
+   "prompt": 0.00004478950047,
+   "completion": 0.0001885873704,
+   "cacheRead": 0.000007543494816,
+   "cacheWrite": null
+  },
+  "openai/gpt-oss-120b:exacto": {
+   "prompt": 0.0000032893146,
+   "completion": 0.0000186394494,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-flash-image-preview": {
+   "prompt": 0.00005482191,
+   "completion": 0.00032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "krea/krea-2-medium": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "krea/krea-2-large": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "krea/krea-2-medium-turbo": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sourceful/riverflow-v2.5-fast": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-opus-5": {
+   "prompt": 0.0005482191,
+   "completion": 0.0027410955,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": 0.000685273875
+  },
+  "recraft/recraft-v4.1-vector": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4.1-pro-vector": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4.1-utility-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-35b-a3b": {
+   "prompt": 0.0000087715056,
+   "completion": 0.000082232865,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4.1-utility": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.4-pro": {
+   "prompt": 0.00394717752,
+   "completion": 0.02368306512,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.6-35b-a3b": {
+   "prompt": 0.000005482191,
+   "completion": 0.000076750674,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/lyria-3-clip-preview": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/minimax-m2.5": {
+   "prompt": 0.0000296038314,
+   "completion": 0.000104161629,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-9b": {
+   "prompt": 0.0000087715056,
+   "completion": 0.0000142536966,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4.1-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4.1": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-embedding-2-preview": {
+   "prompt": 0.000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-4-scout": {
+   "prompt": 0.000010964382,
+   "completion": 0.000032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemma-2-27b-it": {
+   "prompt": 0.000071268483,
+   "completion": 0.000071268483,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2.5": {
+   "prompt": 0.000049339719,
+   "completion": 0.000246698595,
+   "cacheRead": 0.0000076750674,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v4-pro-0813": {
+   "prompt": 0.0000374850291816,
+   "completion": 0.0001124550875448,
+   "cacheRead": 0.00000119270547396,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v3.2-exp": {
+   "prompt": 0.0000296038314,
+   "completion": 0.0000449539662,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.1": {
+   "prompt": 0.000137054775,
+   "completion": 0.0010964382,
+   "cacheRead": 0.0000137054775,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-397b-a17b": {
+   "prompt": 0.0000427610898,
+   "completion": 0.0002565665388,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5.1": {
+   "prompt": 0.000105762428772,
+   "completion": 0.000332396204712,
+   "cacheRead": 0.0000196415939148,
+   "cacheWrite": null
+  },
+  "meituan/longcat-2.0": {
+   "prompt": 0.000032893146,
+   "completion": 0.000131572584,
+   "cacheRead": 6.5786292e-7,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-235b-a22b-2507": {
+   "prompt": 0.00000959383425,
+   "completion": 0.000038375337,
+   "cacheRead": 0.00000191876685,
+   "cacheWrite": null
+  },
+  "bytedance/ui-tars-1.5-7b": {
+   "prompt": 0.000010964382,
+   "completion": 0.000021928764,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-coder": {
+   "prompt": 0.000032893146,
+   "completion": 0.00010964382,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": null
+  },
+  "amazon/nova-2-lite-v1": {
+   "prompt": 0.000032893146,
+   "completion": 0.00027410955,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-14b": {
+   "prompt": 0.000010964382,
+   "completion": 0.0000241216404,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.4-nano": {
+   "prompt": 0.0000230252022,
+   "completion": 0.00014390751375,
+   "cacheRead": 0.00000230252022,
+   "cacheWrite": null
+  },
+  "anthropic/claude-fable-5": {
+   "prompt": 0.00126090393,
+   "completion": 0.00630451965,
+   "cacheRead": 0.000126090393,
+   "cacheWrite": 0.0015761299125
+  },
+  "google/gemini-3.1-flash-lite-image": {
+   "prompt": 0.000027410955,
+   "completion": 0.00016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-next-80b-a3b-instruct": {
+   "prompt": 0.00001069027245,
+   "completion": 0.0000855221796,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5.3-flash": {
+   "prompt": 0.00000542736909,
+   "completion": 0.00001688514828,
+   "cacheRead": 0.00000120608202,
+   "cacheWrite": null
+  },
+  "tencent/hy3": {
+   "prompt": 0.0000142536966,
+   "completion": 0.0000581112246,
+   "cacheRead": 0.00000361824606,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v4-flash-0731": {
+   "prompt": 0.000005306760888,
+   "completion": 0.000015920282664,
+   "cacheRead": 1.688514828e-7,
+   "cacheWrite": null
+  },
+  "google/gemini-embedding-001": {
+   "prompt": 0.000016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/minimax-m3": {
+   "prompt": 0.0000252180786,
+   "completion": 0.0001052580672,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5.2": {
+   "prompt": 0.000053571970452,
+   "completion": 0.000168369049992,
+   "cacheRead": 0.0000099490802268,
+   "cacheWrite": null
+  },
+  "anthropic/claude-sonnet-4.5": {
+   "prompt": 0.00032893146,
+   "completion": 0.0016446573,
+   "cacheRead": 0.000032893146,
+   "cacheWrite": 0.000411164325
+  },
+  "moonshotai/kimi-k3": {
+   "prompt": 0.00005482191,
+   "completion": 0.000307002696,
+   "cacheRead": 0.00000635934156,
+   "cacheWrite": null
+  },
+  "nvidia/nemotron-3.5-content-safety": {
+   "prompt": 0.000021928764,
+   "completion": 0.000021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen-image-3-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.6-27b": {
+   "prompt": 0.000032893146,
+   "completion": 0.00021928764,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "qwen/qwen-image-3": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-fable-5.1": {
+   "prompt": 0.00126090393,
+   "completion": 0.00630451965,
+   "cacheRead": 0.00003152259825,
+   "cacheWrite": 0.0015761299125
+  },
+  "deepseek/deepseek-chat-v3.1": {
+   "prompt": 0.000027410955,
+   "completion": 0.000104161629,
+   "cacheRead": 0.0000142536966,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-large-2407": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2-0905": {
+   "prompt": 0.000065786292,
+   "completion": 0.00027410955,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/voxtral-small-24b-2507": {
+   "prompt": 0.000010964382,
+   "completion": 0.000032893146,
+   "cacheRead": 0.0000010964382,
+   "cacheWrite": null
+  },
+  "anthropic/claude-sonnet-5": {
+   "prompt": 0.00021928764,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "openai/gpt-5.6-luna-pro": {
+   "prompt": 0.000021928764,
+   "completion": 0.000131572584,
+   "cacheRead": 0.0000021928764,
+   "cacheWrite": 0.000027410955
+  },
+  "minimax/minimax-m2.7": {
+   "prompt": 0.0000230252022,
+   "completion": 0.0000921008088,
+   "cacheRead": 0.00000460504044,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-flash-lite": {
+   "prompt": 0.000027410955,
+   "completion": 0.00016446573,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "qwen/qwen3.8-2.4t-a95b": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "google/gemini-embedding-2": {
+   "prompt": 0.000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "inference-net/schematron-v2-turbo": {
+   "prompt": 0.0000032893146,
+   "completion": 0.000016446573,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-pro-preview-customtools": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0000411164325
+  },
+  "black-forest-labs/flux-3-video": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-medium-3-5": {
+   "prompt": 0.00016446573,
+   "completion": 0.00082232865,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "nousresearch/hermes-4-405b": {
+   "prompt": 0.00010964382,
+   "completion": 0.00032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/command-r-08-2024": {
+   "prompt": 0.000016446573,
+   "completion": 0.000065786292,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-2.5-pro": {
+   "prompt": 0.0001507602525,
+   "completion": 0.00120608202,
+   "cacheRead": 0.00001507602525,
+   "cacheWrite": 0.00004522807575
+  },
+  "qwen/qwen3-coder-30b-a3b-instruct": {
+   "prompt": 0.0000076750674,
+   "completion": 0.0000296038314,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "gryphe/mythomax-l2-13b": {
+   "prompt": 0.0000087715056,
+   "completion": 0.0000120608202,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "inference-net/schematron-v2-small": {
+   "prompt": 0.000005482191,
+   "completion": 0.0000252180786,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": null
+  },
+  "x-ai/grok-imagine-video-1.5": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.6-luna": {
+   "prompt": 0.000021928764,
+   "completion": 0.000131572584,
+   "cacheRead": 0.0000021928764,
+   "cacheWrite": 0.000027410955
+  },
+  "z-ai/glm-5.3": {
+   "prompt": 0.00001957142187,
+   "completion": 0.00006151018302,
+   "cacheRead": 0.0000032153050215,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.5": {
+   "prompt": 0.0005482191,
+   "completion": 0.0032893146,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.6v": {
+   "prompt": 0.000032893146,
+   "completion": 0.000098679438,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-122b-a10b": {
+   "prompt": 0.0000285073932,
+   "completion": 0.0002280591456,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v4-flash-vision-exp": {
+   "prompt": 0.000023639207592,
+   "completion": 0.000070917622776,
+   "cacheRead": 7.521566052e-7,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.4": {
+   "prompt": 0.00027410955,
+   "completion": 0.0016446573,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": null
+  },
+  "nvidia/nemotron-3-nano-30b-a3b": {
+   "prompt": 0.000005482191,
+   "completion": 0.000021928764,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": null
+  },
+  "relace/relace-apply-3": {
+   "prompt": 0.000093197247,
+   "completion": 0.000137054775,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2-thinking": {
+   "prompt": 0.000065786292,
+   "completion": 0.00027410955,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": null
+  },
+  "google/gemini-3.5-flash": {
+   "prompt": 0.00016446573,
+   "completion": 0.00098679438,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "openai/gpt-5.6-terra": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "qwen/qwen3.7-plus": {
+   "prompt": 0.0000350860224,
+   "completion": 0.0001403440896,
+   "cacheRead": 0.00000701720448,
+   "cacheWrite": 0.000043857528
+  },
+  "thinkingmachines/inkling-small": {
+   "prompt": 0.000049339719,
+   "completion": 0.000131572584,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.6-sol": {
+   "prompt": 0.00021928764,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "openai/text-embedding-3-large": {
+   "prompt": 0.0000142536966,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-30b-a3b-instruct-2507": {
+   "prompt": 0.000005279349933,
+   "completion": 0.000021166739451,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta/muse-spark-1.2": {
+   "prompt": 0.0001507602525,
+   "completion": 0.0005125848585,
+   "cacheRead": 0.0000180912303,
+   "cacheWrite": null
+  },
+  "anthracite-org/magnum-v4-72b": {
+   "prompt": 0.00027410955,
+   "completion": 0.0005482191,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "poolside/laguna-s-2.1": {
+   "prompt": 0.0000098679438,
+   "completion": 0.0000197358876,
+   "cacheRead": 9.8679438e-7,
+   "cacheWrite": null
+  },
+  "yandex/gpt-pro-5.1": {
+   "prompt": 0.001039883917644,
+   "completion": 0.001039883917644,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "yandex/gpt-lite-5": {
+   "prompt": 0.000259976461602,
+   "completion": 0.000259976461602,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-coder-next": {
+   "prompt": 0.0000131572584,
+   "completion": 0.000087715056,
+   "cacheRead": 0.0000076750674,
+   "cacheWrite": null
+  },
+  "yandex/aliceai-llm": {
+   "prompt": 0.000649924707432,
+   "completion": 0.001559825876466,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-oss-20b": {
+   "prompt": 0.00000197358876,
+   "completion": 0.0000098679438,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-2.5-flash-lite": {
+   "prompt": 0.000010964382,
+   "completion": 0.000043857528,
+   "cacheRead": 0.0000010964382,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "openai/gpt-5.6-terra-pro": {
+   "prompt": 0.000230252022,
+   "completion": 0.001381512132,
+   "cacheRead": 0.0000230252022,
+   "cacheWrite": 0.0002878150275
+  },
+  "google/gemma-4-26b-a4b-it": {
+   "prompt": 0.0000065786292,
+   "completion": 0.000021928764,
+   "cacheRead": 0.0000038375337,
+   "cacheWrite": null
+  },
+  "xiaomi/mimo-v2.5-pro": {
+   "prompt": 0.00003338654319,
+   "completion": 0.00006677308638,
+   "cacheRead": 3.07002696e-7,
+   "cacheWrite": null
+  },
+  "anthropic/claude-opus-4.7": {
+   "prompt": 0.0005482191,
+   "completion": 0.0027410955,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": 0.000685273875
+  },
+  "qwen/qwen3-coder:exacto": {
+   "prompt": 0.000032893146,
+   "completion": 0.00010964382,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": null
+  },
+  "google/gemini-2.5-flash": {
+   "prompt": 0.000032893146,
+   "completion": 0.00027410955,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "fish-audio/transcribe-1": {
+   "prompt": 0.010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-3.1-8b-instruct": {
+   "prompt": 0.0000021928764,
+   "completion": 0.0000043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-opus-4.6": {
+   "prompt": 0.0005482191,
+   "completion": 0.0027410955,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": 0.000685273875
+  },
+  "google/gemma-3-27b-it": {
+   "prompt": 0.0000087715056,
+   "completion": 0.0000175430112,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/command-a-plus": {
+   "prompt": 0.000032893146,
+   "completion": 0.00016446573,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": null
+  },
+  "qwen/qwen-plus-2025-07-28:thinking": {
+   "prompt": 0.0000285073932,
+   "completion": 0.0000855221796,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "fish-audio/s1": {
+   "prompt": 0.0016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "fish-audio/s2-pro": {
+   "prompt": 0.0016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "fish-audio/s2.1-pro": {
+   "prompt": 0.0016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "runway/aleph-2": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "runway/gen-4.5": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-flash-image": {
+   "prompt": 0.00005482191,
+   "completion": 0.00032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta/muse-glimmer-30b": {
+   "prompt": 0.000032893146,
+   "completion": 0.000120608202,
+   "cacheRead": 0.0000043857528,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-30b-a3b-instruct": {
+   "prompt": 0.0000142536966,
+   "completion": 0.0000570147864,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-haiku-4.5": {
+   "prompt": 0.00010964382,
+   "completion": 0.0005482191,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": 0.000137054775
+  },
+  "deepseek/deepseek-v4.1-flash": {
+   "prompt": 0.00000422128707,
+   "completion": 0.00003497637858,
+   "cacheRead": 1.20608202e-7,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-235b-a22b-instruct": {
+   "prompt": 0.000021928764,
+   "completion": 0.0000964865616,
+   "cacheRead": 0.0000120608202,
+   "cacheWrite": null
+  },
+  "perplexity/sonar-pro": {
+   "prompt": 0.00032893146,
+   "completion": 0.0016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-opus-4.5": {
+   "prompt": 0.0005482191,
+   "completion": 0.0027410955,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": 0.000685273875
+  },
+  "anthropic/claude-sonnet-4.6": {
+   "prompt": 0.00032893146,
+   "completion": 0.0016446573,
+   "cacheRead": 0.000032893146,
+   "cacheWrite": 0.000411164325
+  },
+  "alibaba/wan-3.0-prime": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-30b-a3b-thinking-2507": {
+   "prompt": 0.000021928764,
+   "completion": 0.000263145168,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v3.1-terminus": {
+   "prompt": 0.000032893146,
+   "completion": 0.000104161629,
+   "cacheRead": 0.0000142536966,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-asr-1.7b": {
+   "prompt": 0.00082232865,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-large": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "thedrummer/unslopnemo-12b": {
+   "prompt": 0.000043857528,
+   "completion": 0.000043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.7-flash": {
+   "prompt": 0.000082232865,
+   "completion": 0.000411164325,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": 0.000004568492500000001
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b": {
+   "prompt": 0.00005482191,
+   "completion": 0.000241216404,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v4-pro": {
+   "prompt": 0.0000531805420146,
+   "completion": 0.0001063610840292,
+   "cacheRead": 0.0000044054886876,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-3.1-70b-instruct": {
+   "prompt": 0.000043857528,
+   "completion": 0.000043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mancer/weaver": {
+   "prompt": 0.000043857528,
+   "completion": 0.000082232865,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/hailuo-3": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-4.3": {
+   "prompt": 0.0001507602525,
+   "completion": 0.000301520505,
+   "cacheRead": 0.0000241216404,
+   "cacheWrite": null
+  },
+  "google/gemma-4-31b-it": {
+   "prompt": 0.0000087715056,
+   "completion": 0.000032893146,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v3.2": {
+   "prompt": 0.000022893629616,
+   "completion": 0.000033945726672,
+   "cacheRead": 0.000002368306512,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.5v": {
+   "prompt": 0.000065786292,
+   "completion": 0.000197358876,
+   "cacheRead": 0.0000120608202,
+   "cacheWrite": null
+  },
+  "x-ai/grok-build-0.1": {
+   "prompt": 0.00010964382,
+   "completion": 0.00021928764,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-chat-v3-0324": {
+   "prompt": 0.0000263145168,
+   "completion": 0.000098679438,
+   "cacheRead": 0.0000148019157,
+   "cacheWrite": null
+  },
+  "unbiased/pareto": {
+   "prompt": 0.00027410955,
+   "completion": 0.00082232865,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": null
+  },
+  "nvidia/nemotron-3.5-lightning": {
+   "prompt": 0.00000427610898,
+   "completion": 0.0000197358876,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mixtral-8x22b-instruct": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "perplexity/sonar-deep-research": {
+   "prompt": 0.00021928764,
+   "completion": 0.00087715056,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepgram/aura-2": {
+   "prompt": 0.0032893146,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/o4-mini-high": {
+   "prompt": 0.000120608202,
+   "completion": 0.000482432808,
+   "cacheRead": 0.0000301520505,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-r1-0528": {
+   "prompt": 0.00005482191,
+   "completion": 0.000235734213,
+   "cacheRead": 0.000038375337,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-27b": {
+   "prompt": 0.0000213805449,
+   "completion": 0.0001710443592,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "jaredpalmer/kev-4b": {
+   "prompt": 0.00000460504044,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-4.20": {
+   "prompt": 0.000137054775,
+   "completion": 0.00027410955,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.6:exacto": {
+   "prompt": 0.0000471468426,
+   "completion": 0.000191876685,
+   "cacheRead": 0.0000087715056,
+   "cacheWrite": null
+  },
+  "xiaomi/mimo-v2.6-pro": {
+   "prompt": 0.0000476950617,
+   "completion": 0.0000953901234,
+   "cacheRead": 3.94717752e-7,
+   "cacheWrite": null
+  },
+  "perceptron/perceptron-mk1.5": {
+   "prompt": 0.000016446573,
+   "completion": 0.00016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seed-audio-1-0": {
+   "prompt": 0,
+   "completion": 0.27410955,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.5": {
+   "prompt": 0.000065786292,
+   "completion": 0.000241216404,
+   "cacheRead": 0.0000120608202,
+   "cacheWrite": null
+  },
+  "amazon/nova-micro-v1": {
+   "prompt": 0.0000038375337,
+   "completion": 0.0000153501348,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-opus-4.1": {
+   "prompt": 0.0016446573,
+   "completion": 0.0082232865,
+   "cacheRead": 0.00016446573,
+   "cacheWrite": 0.002055821625
+  },
+  "anthropic/claude-opus-4.8": {
+   "prompt": 0.0005482191,
+   "completion": 0.0027410955,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": 0.000685273875
+  },
+  "openai/gpt-5.5-pro": {
+   "prompt": 0.00394717752,
+   "completion": 0.02368306512,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.4-mini": {
+   "prompt": 0.000082232865,
+   "completion": 0.00049339719,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": null
+  },
+  "minimax/minimax-01": {
+   "prompt": 0.000021928764,
+   "completion": 0.000120608202,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v4-flash": {
+   "prompt": 0.0000059136394317,
+   "completion": 0.0000118272788634,
+   "cacheRead": 0.00000118272788634,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2": {
+   "prompt": 0.0000624969774,
+   "completion": 0.000252180786,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.6-flash": {
+   "prompt": 0.000082232865,
+   "completion": 0.000411164325,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": 0.000004568492500000001
+  },
+  "morph/morph-v3-large": {
+   "prompt": 0.000098679438,
+   "completion": 0.000208323258,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sakana/sakana-namazu": {
+   "prompt": 0.000104161629,
+   "completion": 0.00043857528,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": null
+  },
+  "tencent/hunyuan-a13b-instruct": {
+   "prompt": 0.0000153501348,
+   "completion": 0.0000624969774,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "morph/morph-v3-fast": {
+   "prompt": 0.000087715056,
+   "completion": 0.000131572584,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-small-3.2-24b-instruct": {
+   "prompt": 0.0000082232865,
+   "completion": 0.000021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "baidu/ernie-4.5-vl-424b-a47b": {
+   "prompt": 0.0000460504044,
+   "completion": 0.000137054775,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/minimax-m1": {
+   "prompt": 0.000043857528,
+   "completion": 0.000241216404,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "tencent/hy-mt2-1.8b": {
+   "prompt": 0.00000482432808,
+   "completion": 0.00001940695614,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-small-2603": {
+   "prompt": 0.000016446573,
+   "completion": 0.000065786292,
+   "cacheRead": 0.0000016446573,
+   "cacheWrite": null
+  },
+  "canopylabs/orpheus-3b-0.1-ft": {
+   "prompt": 0.00076750674,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-sonnet-4": {
+   "prompt": 0.00032893146,
+   "completion": 0.0016446573,
+   "cacheRead": 0.000032893146,
+   "cacheWrite": 0.000411164325
+  },
+  "tencent/hy-mt2-30b-a3b": {
+   "prompt": 0.00000811364268,
+   "completion": 0.0000323449269,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "hexgrad/kokoro-82m": {
+   "prompt": 0.0000679791684,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "nvidia/parakeet-tdt-0.6b-v3": {
+   "prompt": 0.0027410955,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-guard-4-12b": {
+   "prompt": 0.0000197358876,
+   "completion": 0.0000197358876,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-r1": {
+   "prompt": 0.000076750674,
+   "completion": 0.00027410955,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "thedrummer/skyfall-36b-v2": {
+   "prompt": 0.000060304101,
+   "completion": 0.000087715056,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": null
+  },
+  "perplexity/sonar": {
+   "prompt": 0.00010964382,
+   "completion": 0.00010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen-2.5-7b-instruct": {
+   "prompt": 0.000010964382,
+   "completion": 0.000021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-r1-distill-llama-70b": {
+   "prompt": 0.000087715056,
+   "completion": 0.000087715056,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seedream-5-0-lite": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen-2.5-coder-32b-instruct": {
+   "prompt": 0.0000723649212,
+   "completion": 0.00010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-small-24b-instruct-2501": {
+   "prompt": 0.000005482191,
+   "completion": 0.0000087715056,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-8b": {
+   "prompt": 0.00001282832694,
+   "completion": 0.0000498879381,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-stt-1.0": {
+   "prompt": 0.003045661666669103,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-32b": {
+   "prompt": 0.0000087715056,
+   "completion": 0.0000307002696,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3-flash-preview": {
+   "prompt": 0.00005482191,
+   "completion": 0.00032893146,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "qwen/qwen3-235b-a22b": {
+   "prompt": 0.0000498879381,
+   "completion": 0.0001995517524,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/o1": {
+   "prompt": 0.0016446573,
+   "completion": 0.0065786292,
+   "cacheRead": 0.00082232865,
+   "cacheWrite": null
+  },
+  "google/gemini-2.5-flash-image": {
+   "prompt": 0.000032893146,
+   "completion": 0.00027410955,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "cohere/command-r7b-12-2024": {
+   "prompt": 0.00000411164325,
+   "completion": 0.000016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "voyageai/voyage-code-4": {
+   "prompt": 0.0000131572584,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5": {
+   "prompt": 0.000065786292,
+   "completion": 0.0002105161344,
+   "cacheRead": 0.0000131572584,
+   "cacheWrite": null
+  },
+  "sao10k/l3.3-euryale-70b": {
+   "prompt": 0.000071268483,
+   "completion": 0.000082232865,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "microsoft/phi-4": {
+   "prompt": 0.0000076750674,
+   "completion": 0.0000153501348,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/o3": {
+   "prompt": 0.00021928764,
+   "completion": 0.00087715056,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "openai/o4-mini": {
+   "prompt": 0.000120608202,
+   "completion": 0.000482432808,
+   "cacheRead": 0.0000301520505,
+   "cacheWrite": null
+  },
+  "sao10k/l3-lunaris-8b": {
+   "prompt": 0.0000043857528,
+   "completion": 0.000005482191,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "xiaomi/mimo-v2.5": {
+   "prompt": 0.00001304761458,
+   "completion": 0.00002609522916,
+   "cacheRead": 2.79591741e-7,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seed-2.0-code": {
+   "prompt": 0.00005482191,
+   "completion": 0.00032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4.1": {
+   "prompt": 0.00021928764,
+   "completion": 0.00087715056,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "microsoft/mai-voice-2-flash": {
+   "prompt": 0.0016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4.1-nano": {
+   "prompt": 0.000010964382,
+   "completion": 0.000043857528,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-4-maverick": {
+   "prompt": 0.00002055821625,
+   "completion": 0.00007154259255,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.6-flash": {
+   "prompt": 0.00002055821625,
+   "completion": 0.0001233492975,
+   "cacheRead": 0.000002055821625,
+   "cacheWrite": 0.0000256977703125
+  },
+  "inclusionai/ling-3.0-flash-vl": {
+   "prompt": 0.000002417646231,
+   "completion": 0.0000070917622776,
+   "cacheRead": 4.835292462e-7,
+   "cacheWrite": null
+  },
+  "openai/gpt-transcribe": {
+   "prompt": 0.0082232865,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "stepfun/step-3.7-flash": {
+   "prompt": 0.0000175430112,
+   "completion": 0.0001008723144,
+   "cacheRead": 0.00000350860224,
+   "cacheWrite": null
+  },
+  "bytedance/seedance-2.5": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "black-forest-labs/flux-video-upscale": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/o3-mini": {
+   "prompt": 0.000120608202,
+   "completion": 0.000482432808,
+   "cacheRead": 0.000060304101,
+   "cacheWrite": null
+  },
+  "qwen/qwen-plus": {
+   "prompt": 0.0000285073932,
+   "completion": 0.0000855221796,
+   "cacheRead": 0.00000570147864,
+   "cacheWrite": 0.0000356342415
+  },
+  "black-forest-labs/flux-video-edit": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/voxtral-small-24b-2507-stt": {
+   "prompt": 0.005482191,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen2.5-vl-72b-instruct": {
+   "prompt": 0.000087715056,
+   "completion": 0.00010964382,
+   "cacheRead": 0.000043857528,
+   "cacheWrite": null
+  },
+  "mistralai/voxtral-mini-3b-2507": {
+   "prompt": 0.001827400654794,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "respan/span-01": {
+   "prompt": 0.0000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/command-a": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/o1-pro": {
+   "prompt": 0.016446573,
+   "completion": 0.065786292,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "amazon/nova-pro-v1": {
+   "prompt": 0.000087715056,
+   "completion": 0.000350860224,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o-2024-11-20": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000137054775,
+   "cacheWrite": null
+  },
+  "google/gemma-3-12b-it": {
+   "prompt": 0.000005482191,
+   "completion": 0.000016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-small-3.1-24b-instruct": {
+   "prompt": 0.00003848498082,
+   "completion": 0.0000608523201,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "thinkingmachines/inkling": {
+   "prompt": 0.000104161629,
+   "completion": 0.000444057471,
+   "cacheRead": 0.0000175430112,
+   "cacheWrite": null
+  },
+  "google/gemma-3-4b-it": {
+   "prompt": 0.000005482191,
+   "completion": 0.000010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-3.2-3b-instruct": {
+   "prompt": 0.000005482191,
+   "completion": 0.0000361824606,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta-llama/llama-3.2-1b-instruct": {
+   "prompt": 0.00000296038314,
+   "completion": 0.00002203840782,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/command-r-plus-08-2024": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-imagine-image-2.0": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o-2024-05-13": {
+   "prompt": 0.0005482191,
+   "completion": 0.0016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "undi95/remm-slerp-l2-13b": {
+   "prompt": 0.000038375337,
+   "completion": 0.000071268483,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o-2024-08-06": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000137054775,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000137054775,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o-mini-2024-07-18": {
+   "prompt": 0.000016446573,
+   "completion": 0.000065786292,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": null
+  },
+  "nousresearch/hermes-3-llama-3.1-405b": {
+   "prompt": 0.00010964382,
+   "completion": 0.00010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "nousresearch/hermes-3-llama-3.1-70b": {
+   "prompt": 0.000076750674,
+   "completion": 0.000076750674,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o-mini": {
+   "prompt": 0.000016446573,
+   "completion": 0.000065786292,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o:extended": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000137054775,
+   "cacheWrite": null
+  },
+  "openai/gpt-3.5-turbo-0613": {
+   "prompt": 0.00010964382,
+   "completion": 0.00021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.7-max": {
+   "prompt": 0.0001617246345,
+   "completion": 0.0004851739035,
+   "cacheRead": 0.0000323449269,
+   "cacheWrite": 0.000202155793125
+  },
+  "microsoft/wizardlm-2-8x22b": {
+   "prompt": 0.0000679791684,
+   "completion": 0.0000679791684,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-3.5-turbo-instruct": {
+   "prompt": 0.00016446573,
+   "completion": 0.00021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-3.5-turbo-16k": {
+   "prompt": 0.00032893146,
+   "completion": 0.00043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-3.5-turbo": {
+   "prompt": 0.00005482191,
+   "completion": 0.00016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4-turbo": {
+   "prompt": 0.0010964382,
+   "completion": 0.0032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4": {
+   "prompt": 0.0032893146,
+   "completion": 0.0065786292,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "perplexity/sonar-pro-search": {
+   "prompt": 0.00032893146,
+   "completion": 0.0016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "thenlper/gte-base": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-235b-a22b-thinking": {
+   "prompt": 0.000043857528,
+   "completion": 0.00043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "thedrummer/cydonia-24b-v4.1": {
+   "prompt": 0.000032893146,
+   "completion": 0.00005482191,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.1-codex-max": {
+   "prompt": 0.000137054775,
+   "completion": 0.0010964382,
+   "cacheRead": 0.0000137054775,
+   "cacheWrite": null
+  },
+  "relace/relace-search": {
+   "prompt": 0.00010964382,
+   "completion": 0.00032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5-pro": {
+   "prompt": 0.0016446573,
+   "completion": 0.0131572584,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "thenlper/gte-large": {
+   "prompt": 0.0000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-30b-a3b-thinking": {
+   "prompt": 0.0000317967078,
+   "completion": 0.00010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-8b-instruct": {
+   "prompt": 0.00001282832694,
+   "completion": 0.0000498879381,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-reranker-8b": {
+   "prompt": 0.000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5": {
+   "prompt": 0.000137054775,
+   "completion": 0.0010964382,
+   "cacheRead": 0.0000137054775,
+   "cacheWrite": null
+  },
+  "mistralai/ministral-3b-2512": {
+   "prompt": 0.000010964382,
+   "completion": 0.000010964382,
+   "cacheRead": 0.0000010964382,
+   "cacheWrite": null
+  },
+  "microsoft/mai-image-2.6": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "microsoft/mai-image-2.6-flash": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "ibm-granite/granite-4.0-h-micro": {
+   "prompt": 0.00000186394494,
+   "completion": 0.00001228010784,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-v3.1-terminus:exacto": {
+   "prompt": 0.000032893146,
+   "completion": 0.000104161629,
+   "cacheRead": 0.0000142536966,
+   "cacheWrite": null
+  },
+  "openai/whisper-large-v3-turbo": {
+   "prompt": 0.0003651139206,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sao10k/l3.1-euryale-70b": {
+   "prompt": 0.000093197247,
+   "completion": 0.000093197247,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-6-astra": {
+   "prompt": 0.0010964382,
+   "completion": 0.005482191,
+   "cacheRead": 0.00010964382,
+   "cacheWrite": 0.00137054775
+  },
+  "openai/gpt-oss-safeguard-20b": {
+   "prompt": 0.0000082232865,
+   "completion": 0.000032893146,
+   "cacheRead": 0.00000411164325,
+   "cacheWrite": null
+  },
+  "minimax/minimax-m2": {
+   "prompt": 0.0000279591741,
+   "completion": 0.0001118366964,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "moonshotai/kimi-k2-0905:exacto": {
+   "prompt": 0.000065786292,
+   "completion": 0.00027410955,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/whisper-large-v3": {
+   "prompt": 0.00082232865,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "amazon/nova-premier-v1": {
+   "prompt": 0.00027410955,
+   "completion": 0.00137054775,
+   "cacheRead": 0.0000685273875,
+   "cacheWrite": null
+  },
+  "baai/bge-m3": {
+   "prompt": 0.0000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.1-codex": {
+   "prompt": 0.000137054775,
+   "completion": 0.0010964382,
+   "cacheRead": 0.0000142536966,
+   "cacheWrite": null
+  },
+  "qwen/qwen-audio-3.0-tts-flash": {
+   "prompt": 0.0016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.2": {
+   "prompt": 0.000191876685,
+   "completion": 0.00153501348,
+   "cacheRead": 0.0000191876685,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.1-codex-mini": {
+   "prompt": 0.000027410955,
+   "completion": 0.00021928764,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.2-chat": {
+   "prompt": 0.000191876685,
+   "completion": 0.00153501348,
+   "cacheRead": 0.0000191876685,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.2-pro": {
+   "prompt": 0.00230252022,
+   "completion": 0.01842016176,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.8-flash": {
+   "prompt": 0.000016446573,
+   "completion": 0.0000515325954,
+   "cacheRead": 0.00000175430112,
+   "cacheWrite": 0.000021928764
+  },
+  "black-forest-labs/flux.2-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "intfloat/e5-large-v2": {
+   "prompt": 0.0000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/minimax-m2.1": {
+   "prompt": 0.000032893146,
+   "completion": 0.000131572584,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seed-1.6-flash": {
+   "prompt": 0.0000082232865,
+   "completion": 0.000032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seed-1.6": {
+   "prompt": 0.000027410955,
+   "completion": 0.00021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "tencent/hy4-preview": {
+   "prompt": 0.00009144294588,
+   "completion": 0.00027421919382,
+   "cacheRead": 0.00000460504044,
+   "cacheWrite": null
+  },
+  "sentence-transformers/paraphrase-minilm-l6-v2": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "intfloat/e5-base-v2": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen-audio-3.0-tts-plus": {
+   "prompt": 0.0021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "intfloat/multilingual-e5-large": {
+   "prompt": 0.0000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sentence-transformers/all-minilm-l12-v2": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sentence-transformers/multi-qa-mpnet-base-dot-v1": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "perplexity/sonar-reasoning-pro": {
+   "prompt": 0.00021928764,
+   "completion": 0.00087715056,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "baai/bge-large-en-v1.5": {
+   "prompt": 0.0000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sentence-transformers/all-minilm-l6-v2": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-embed-2312": {
+   "prompt": 0.000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/codestral-embed-2505": {
+   "prompt": 0.000016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "baai/bge-base-en-v1.5": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sentence-transformers/all-mpnet-base-v2": {
+   "prompt": 5.482191e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/text-embedding-ada-002": {
+   "prompt": 0.000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/text-embedding-3-small": {
+   "prompt": 0.0000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-embedding-8b": {
+   "prompt": 0.0000010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-audio": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-audio-mini": {
+   "prompt": 0.000065786292,
+   "completion": 0.000263145168,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "writer/palmyra-x5": {
+   "prompt": 0.000065786292,
+   "completion": 0.00065786292,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/minimax-m2-her": {
+   "prompt": 0.000032893146,
+   "completion": 0.000131572584,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.2-codex": {
+   "prompt": 0.000191876685,
+   "completion": 0.00153501348,
+   "cacheRead": 0.0000191876685,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-embedding-4b": {
+   "prompt": 0.0000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance/seedance-2.0-mini": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "black-forest-labs/flux.2-flex": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "black-forest-labs/flux.2-max": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "black-forest-labs/flux.2-klein-4b": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-max-thinking": {
+   "prompt": 0.0000855221796,
+   "completion": 0.000427610898,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "stepfun/step-3.5-flash": {
+   "prompt": 0.000010964382,
+   "completion": 0.000032893146,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-plus-02-15": {
+   "prompt": 0.0000285073932,
+   "completion": 0.0001710443592,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "xiaomi/mimo-v2.6-pro-ultraspeed": {
+   "prompt": 0.000476950617,
+   "completion": 0.000953901234,
+   "cacheRead": 0.00000394717752,
+   "cacheWrite": null
+  },
+  "x-ai/grok-4.7": {
+   "prompt": 0.000175430112,
+   "completion": 0.000526290336,
+   "cacheRead": 0.000043857528,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seed-2-1-turbo": {
+   "prompt": 0.00005482191,
+   "completion": 0.00027410955,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "aion-labs/aion-2.0": {
+   "prompt": 0.000087715056,
+   "completion": 0.000175430112,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.3-codex": {
+   "prompt": 0.000191876685,
+   "completion": 0.00153501348,
+   "cacheRead": 0.0000191876685,
+   "cacheWrite": null
+  },
+  "xiaomi/mimo-v2.6-flash": {
+   "prompt": 0.0000153501348,
+   "completion": 0.0000307002696,
+   "cacheRead": 3.07002696e-7,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-asr-0.6b": {
+   "prompt": 0.0003651139206,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "voyageai/rerank-2.5-lite": {
+   "prompt": 0.0000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.5-air": {
+   "prompt": 0.0000142536966,
+   "completion": 0.000093197247,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": null
+  },
+  "nvidia/nemotron-3.5-asr-streaming-multilingual-0.6b": {
+   "prompt": 0.0003651139206,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seed-2.0-mini": {
+   "prompt": 0.000010964382,
+   "completion": 0.000043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "inception/mercury-2": {
+   "prompt": 0.000027410955,
+   "completion": 0.000082232865,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": null
+  },
+  "openai/gpt-6-sol-pro": {
+   "prompt": 0.00021928764,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "voyageai/voyage-4-lite": {
+   "prompt": 0.0000021928764,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "voyageai/voyage-4": {
+   "prompt": 0.0000065786292,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "upstage/solar-pro-3": {
+   "prompt": 0.000016446573,
+   "completion": 0.000065786292,
+   "cacheRead": 0.0000016446573,
+   "cacheWrite": null
+  },
+  "openai/gpt-6-luna-pro": {
+   "prompt": 0.000010964382,
+   "completion": 0.00005482191,
+   "cacheRead": 0.0000010964382,
+   "cacheWrite": 0.0000137054775
+  },
+  "bytedance-seed/seed-2.0-lite": {
+   "prompt": 0.000027410955,
+   "completion": 0.00021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen-plus-2025-07-28": {
+   "prompt": 0.0000285073932,
+   "completion": 0.0000855221796,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "voyageai/rerank-2.5": {
+   "prompt": 0.000005482191,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "voyageai/voyage-4-large": {
+   "prompt": 0.0000131572584,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance-seed/seedream-5-0-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5-turbo": {
+   "prompt": 0.000131572584,
+   "completion": 0.00043857528,
+   "cacheRead": 0.0000263145168,
+   "cacheWrite": null
+  },
+  "openai/gpt-6-sol": {
+   "prompt": 0.00021928764,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "perplexity/pplx-embed-v1-4B": {
+   "prompt": 0.0000032893146,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "perplexity/pplx-embed-v1-0.6B": {
+   "prompt": 4.3857528e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "rekaai/reka-flash-3": {
+   "prompt": 0.000010964382,
+   "completion": 0.000021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "perplexity/pplx-embed-v1-4b": {
+   "prompt": 0.0000032893146,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "perplexity/pplx-embed-v1-0.6b": {
+   "prompt": 4.3857528e-7,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "rekaai/reka-edge": {
+   "prompt": 0.000010964382,
+   "completion": 0.000010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "reka/reka-edge": {
+   "prompt": 0.000010964382,
+   "completion": 0.000010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5v-turbo": {
+   "prompt": 0.000131572584,
+   "completion": 0.00043857528,
+   "cacheRead": 0.0000263145168,
+   "cacheWrite": null
+  },
+  "arcee-ai/trinity-large-thinking": {
+   "prompt": 0.000027410955,
+   "completion": 0.000087715056,
+   "cacheRead": 0.0000065786292,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-asr-flash-2026-02-10": {
+   "prompt": 0.0038375337,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.8-max-0902": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": 0.00027410955
+  },
+  "openai/gpt-6-astra-pro": {
+   "prompt": 0.0010964382,
+   "completion": 0.005482191,
+   "cacheRead": 0.00010964382,
+   "cacheWrite": 0.00137054775
+  },
+  "google/chirp-3": {
+   "prompt": 0.02923835200003655,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.4-image-2": {
+   "prompt": 0.00087715056,
+   "completion": 0.0016446573,
+   "cacheRead": 0.00021928764,
+   "cacheWrite": null
+  },
+  "meta/muse-voice-transcribe-1.0": {
+   "prompt": 0.005482191,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4.1-mini": {
+   "prompt": 0.000043857528,
+   "completion": 0.000175430112,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-coder-plus": {
+   "prompt": 0.000071268483,
+   "completion": 0.000356342415,
+   "cacheRead": 0.0000142536966,
+   "cacheWrite": 0.00008908560375
+  },
+  "qwen/qwen3.6-max-preview": {
+   "prompt": 0.00011260420314,
+   "completion": 0.00067562521884,
+   "cacheRead": 0.000011260420314,
+   "cacheWrite": 0.000140755253925
+  },
+  "openai/gpt-4o-mini-transcribe": {
+   "prompt": 0.000137054775,
+   "completion": 0.0005482191,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-coder-flash": {
+   "prompt": 0.0000213805449,
+   "completion": 0.0001069027245,
+   "cacheRead": 0.00000427610898,
+   "cacheWrite": 0.000026725681125
+  },
+  "qwen/qwen3.5-plus-20260420": {
+   "prompt": 0.000032893146,
+   "completion": 0.000197358876,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": 0.0000411164325
+  },
+  "openai/gpt-chat-latest": {
+   "prompt": 0.0005482191,
+   "completion": 0.0032893146,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "perceptron/perceptron-mk1": {
+   "prompt": 0.000016446573,
+   "completion": 0.00016446573,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-voice-tts-1.0": {
+   "prompt": 0.0016446573,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "sesame/csm-1b": {
+   "prompt": 0.00076750674,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "microsoft/mai-transcribe-1.5": {
+   "prompt": 39.4717752,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-6-luna": {
+   "prompt": 0.000010964382,
+   "completion": 0.00005482191,
+   "cacheRead": 0.0000010964382,
+   "cacheWrite": 0.0000137054775
+  },
+  "z-ai/glm-4.6": {
+   "prompt": 0.0000471468426,
+   "completion": 0.000191876685,
+   "cacheRead": 0.0000087715056,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-8b-thinking": {
+   "prompt": 0.0000197358876,
+   "completion": 0.000230252022,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-vl-32b-instruct": {
+   "prompt": 0.00001140295728,
+   "completion": 0.00004561182912,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/rerank-4-fast": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/rerank-v3.5": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cohere/rerank-4-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "microsoft/mai-voice-2": {
+   "prompt": 0.00241216404,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.5-flash-02-23": {
+   "prompt": 0.0000071268483,
+   "completion": 0.0000285073932,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-flash-tts-preview": {
+   "prompt": 0.00010964382,
+   "completion": 0.0021928764,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "alibaba/happyhorse-1.1": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "alibaba/happyhorse-1.0": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "kwaivgi/kling-video-o1": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/veo-3.1": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-4o-transcribe": {
+   "prompt": 0.00027410955,
+   "completion": 0.0010964382,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-image-2": {
+   "prompt": 0.00087715056,
+   "completion": 0.00087715056,
+   "cacheRead": 0.00021928764,
+   "cacheWrite": null
+  },
+  "openai/whisper-1": {
+   "prompt": 0.010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "poolside/laguna-xs-2.1": {
+   "prompt": 0.0000065786292,
+   "completion": 0.0000131572584,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "kwaivgi/kling-v3.0-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "kwaivgi/kling-v3.0-std": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/veo-3.1-fast": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/veo-3.1-lite": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/hailuo-2.3": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance/seedance-2.0": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "alibaba/wan-2.7": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "alibaba/wan-2.6": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance/seedance-1-5-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/sora-2-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "deepseek/deepseek-chat": {
+   "prompt": 0.0000350860224,
+   "completion": 0.0000975829998,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition": {
+   "prompt": 0.000021928764,
+   "completion": 0.000098679438,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "bytedance/seedance-2.0-fast": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-image-1-mini": {
+   "prompt": 0.00027410955,
+   "completion": 0.00027410955,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": null
+  },
+  "microsoft/mai-image-2.5": {
+   "prompt": 0.0005482191,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "aion-labs/aion-3.0-mini": {
+   "prompt": 0.000076750674,
+   "completion": 0.000153501348,
+   "cacheRead": 0.0000197358876,
+   "cacheWrite": null
+  },
+  "x-ai/grok-imagine-video": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/speech-2.8-hd": {
+   "prompt": 0.010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "microsoft/mai-image-2.5-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta/muse-spark-1.1": {
+   "prompt": 0.0001507602525,
+   "completion": 0.0005125848585,
+   "cacheRead": 0.0000180912303,
+   "cacheWrite": null
+  },
+  "minimax/speech-2.8-turbo": {
+   "prompt": 0.0065786292,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-4.5": {
+   "prompt": 0.000230252022,
+   "completion": 0.000690756066,
+   "cacheRead": 0.0000345378033,
+   "cacheWrite": null
+  },
+  "deepgram/nova-3": {
+   "prompt": 0.007857807100003654,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "prism-ml/ternary-bonsai-2-27b": {
+   "prompt": 0.0000082232865,
+   "completion": 0.00005482191,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.6-plus": {
+   "prompt": 0.0000356342415,
+   "completion": 0.000213805449,
+   "cacheRead": 0.00000356342415,
+   "cacheWrite": 0.000044542801875
+  },
+  "google/gemini-2.5-pro-preview": {
+   "prompt": 0.000137054775,
+   "completion": 0.0010964382,
+   "cacheRead": 0.0000137054775,
+   "cacheWrite": 0.0000411164325
+  },
+  "qwen/qwen-2.5-72b-instruct": {
+   "prompt": 0.0000394717752,
+   "completion": 0.000043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-next-80b-a3b-thinking": {
+   "prompt": 0.000016446573,
+   "completion": 0.000131572584,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "tencent/hy3-preview": {
+   "prompt": 0.0000197358876,
+   "completion": 0.000065786292,
+   "cacheRead": 0.0000065786292,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-pro-preview": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0000411164325
+  },
+  "mistralai/voxtral-mini-tts-2603": {
+   "prompt": 0.00175430112,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.5-flash-lite": {
+   "prompt": 0.000032893146,
+   "completion": 0.00027410955,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "inclusionai/ming-image-0.1-design": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-5-nano": {
+   "prompt": 0.000005482191,
+   "completion": 0.000043857528,
+   "cacheRead": 5.482191e-7,
+   "cacheWrite": null
+  },
+  "mistralai/voxtral-mini-transcribe": {
+   "prompt": 0.005482191,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "voyageai/voyage-multimodal-3.5": {
+   "prompt": 0.0000131572584,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "anthropic/claude-opus-5.5": {
+   "prompt": 0.00043857528,
+   "completion": 0.0021928764,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0005482191
+  },
+  "amazon/nova-lite-v1": {
+   "prompt": 0.0000065786292,
+   "completion": 0.0000263145168,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "nvidia/nemotron-3-super-120b-a12b": {
+   "prompt": 0.0000093197247,
+   "completion": 0.000043857528,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "assemblyai/universal-3-5-pro": {
+   "prompt": 0.00685273875,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "yandex/aliceai-llm-flash": {
+   "prompt": 0.00012998274861,
+   "completion": 0.000259976461602,
+   "cacheRead": 0.0000324962353716,
+   "cacheWrite": null
+  },
+  "openai/gpt-5-mini": {
+   "prompt": 0.000027410955,
+   "completion": 0.00021928764,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": null
+  },
+  "openai/gpt-5.6-sol-pro": {
+   "prompt": 0.000230252022,
+   "completion": 0.00115126011,
+   "cacheRead": 0.0000230252022,
+   "cacheWrite": 0.0002878150275
+  },
+  "sakana/fugu-max": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": null
+  },
+  "z-ai/glm-4.7-flash": {
+   "prompt": 0.0000065786292,
+   "completion": 0.000043857528,
+   "cacheRead": 0.0000010964382,
+   "cacheWrite": null
+  },
+  "sakana/fugu-ultra-v2": {
+   "prompt": 0.0005482191,
+   "completion": 0.0032893146,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5.3-flashx": {
+   "prompt": 0.00004462503474,
+   "completion": 0.0001507602525,
+   "cacheRead": 0.00001085473818,
+   "cacheWrite": null
+  },
+  "mistralai/ministral-14b-2512": {
+   "prompt": 0.000021928764,
+   "completion": 0.000021928764,
+   "cacheRead": 0.0000021928764,
+   "cacheWrite": null
+  },
+  "fireworks/ember-1": {
+   "prompt": 0.00032893146,
+   "completion": 0.0016446573,
+   "cacheRead": 0.000032893146,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-styles-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-styles-vector": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-styles-pro-vector": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4-styles": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-4.20-multi-agent": {
+   "prompt": 0.000137054775,
+   "completion": 0.00027410955,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": null
+  },
+  "fish-audio/transcribe-1-pro": {
+   "prompt": 0.010964382,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "minimax/hailuo-3-max": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "aion-labs/aion-3.0": {
+   "prompt": 0.00032893146,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000082232865,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-medium-3": {
+   "prompt": 0.000043857528,
+   "completion": 0.00021928764,
+   "cacheRead": 0.0000043857528,
+   "cacheWrite": null
+  },
+  "upstage/solar-mini4": {
+   "prompt": 0.000005482191,
+   "completion": 0.000021928764,
+   "cacheRead": 5.482191e-7,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-large-2512": {
+   "prompt": 0.00005482191,
+   "completion": 0.00016446573,
+   "cacheRead": 0.000005482191,
+   "cacheWrite": null
+  },
+  "aion-labs/aion-3.5-mini": {
+   "prompt": 0.000076750674,
+   "completion": 0.000153501348,
+   "cacheRead": 0.0000197358876,
+   "cacheWrite": null
+  },
+  "mistralai/devstral-2512": {
+   "prompt": 0.000043857528,
+   "completion": 0.00021928764,
+   "cacheRead": 0.0000043857528,
+   "cacheWrite": null
+  },
+  "aion-labs/aion-3.5": {
+   "prompt": 0.00032893146,
+   "completion": 0.00065786292,
+   "cacheRead": 0.000082232865,
+   "cacheWrite": null
+  },
+  "google/gemini-3.5-transcribe": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "tencent/hy-mt2-7b": {
+   "prompt": 0.00000811364268,
+   "completion": 0.0000323449269,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "x-ai/grok-4.6": {
+   "prompt": 0.00021928764,
+   "completion": 0.00065786292,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "heygen/avatar-iv": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-saba": {
+   "prompt": 0.000021928764,
+   "completion": 0.000065786292,
+   "cacheRead": 0.0000021928764,
+   "cacheWrite": null
+  },
+  "sourceful/riverflow-v2-pro": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "alibaba/wan-3.0": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3-pro-image": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0000411164325
+  },
+  "meta/muse-spark-1.2-contributor": {
+   "prompt": 0.000010964382,
+   "completion": 0.000021928764,
+   "cacheRead": 2.1928764e-7,
+   "cacheWrite": null
+  },
+  "recraft/recraft-v4.1-flash": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "meta/muse-spark-1.3-contributor": {
+   "prompt": 0.000010964382,
+   "completion": 0.000021928764,
+   "cacheRead": 2.1928764e-7,
+   "cacheWrite": null
+  },
+  "sourceful/riverflow-v2-fast": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3-pro-image-preview": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0000411164325
+  },
+  "inception/mercury-2.5": {
+   "prompt": 0.0000043857528,
+   "completion": 0.000016446573,
+   "cacheRead": 4.3857528e-7,
+   "cacheWrite": null
+  },
+  "qwen/qwen3-max": {
+   "prompt": 0.0000855221796,
+   "completion": 0.000427610898,
+   "cacheRead": 0.00001710443592,
+   "cacheWrite": 0.0001069027245
+  },
+  "openai/gpt-image-2.5-sunburst": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.1-flash-lite-preview": {
+   "prompt": 0.000027410955,
+   "completion": 0.00016446573,
+   "cacheRead": 0.0000027410955,
+   "cacheWrite": 0.000009136985000000001
+  },
+  "openai/gpt-image-2.5-flare": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/codestral-2508": {
+   "prompt": 0.000032893146,
+   "completion": 0.000098679438,
+   "cacheRead": 0.0000032893146,
+   "cacheWrite": null
+  },
+  "openai/gpt-5-image": {
+   "prompt": 0.0010964382,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000137054775,
+   "cacheWrite": null
+  },
+  "openai/gpt-5-image-mini": {
+   "prompt": 0.00027410955,
+   "completion": 0.00021928764,
+   "cacheRead": 0.000027410955,
+   "cacheWrite": null
+  },
+  "inclusionai/ming-image-0.1-design-layer": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "openai/gpt-image-1": {
+   "prompt": 0.0010964382,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000137054775,
+   "cacheWrite": null
+  },
+  "stealth/space-bunny-alpha": {
+   "prompt": 0,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.8-max-prime": {
+   "prompt": 0.00043857528,
+   "completion": 0.00131572584,
+   "cacheRead": 0.00005482191,
+   "cacheWrite": null
+  },
+  "z-ai/glm-5.3-prime": {
+   "prompt": 0.000307002696,
+   "completion": 0.000964865616,
+   "cacheRead": 0.0000614005392,
+   "cacheWrite": null
+  },
+  "aion-labs/aion-rp-llama-3.1-8b": {
+   "prompt": 0.000087715056,
+   "completion": 0.000175430112,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.8-flash-lite-tts": {
+   "prompt": 0.00005482191,
+   "completion": 0.00065786292,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "google/gemini-3.8-flash-tts": {
+   "prompt": 0.00005482191,
+   "completion": 0.00098679438,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "mistralai/ministral-8b-2512": {
+   "prompt": 0.000016446573,
+   "completion": 0.000016446573,
+   "cacheRead": 0.0000016446573,
+   "cacheWrite": null
+  },
+  "meta/muse-spark-1.3": {
+   "prompt": 0.000137054775,
+   "completion": 0.000465986235,
+   "cacheRead": 0.000016446573,
+   "cacheWrite": null
+  },
+  "google/gemini-3.8-flash": {
+   "prompt": 0.000082232865,
+   "completion": 0.000411164325,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": 0.000004568492500000001
+  },
+  "openai/o3-mini-high": {
+   "prompt": 0.000120608202,
+   "completion": 0.000482432808,
+   "cacheRead": 0.000060304101,
+   "cacheWrite": null
+  },
+  "qwen/qwen3.8-omni-flash": {
+   "prompt": 0.000016446573,
+   "completion": 0.0000515325954,
+   "cacheRead": 0.00000175430112,
+   "cacheWrite": null
+  },
+  "mistralai/mistral-medium-3.1": {
+   "prompt": 0.000043857528,
+   "completion": 0.00021928764,
+   "cacheRead": 0.0000043857528,
+   "cacheWrite": null
+  },
+  "~anthropic/claude-fable-latest": {
+   "prompt": 0.00126090393,
+   "completion": 0.00630451965,
+   "cacheRead": 0.00003152259825,
+   "cacheWrite": 0.0015761299125
+  },
+  "~anthropic/claude-haiku-latest": {
+   "prompt": 0.00010964382,
+   "completion": 0.0005482191,
+   "cacheRead": 0.000010964382,
+   "cacheWrite": 0.000137054775
+  },
+  "~anthropic/claude-opus-latest": {
+   "prompt": 0.00043857528,
+   "completion": 0.0021928764,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0005482191
+  },
+  "~anthropic/claude-sonnet-latest": {
+   "prompt": 0.00021928764,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "~deepseek/deepseek-v4-flash-latest": {
+   "prompt": 0.00000422128707,
+   "completion": 0.00003497637858,
+   "cacheRead": 1.20608202e-7,
+   "cacheWrite": null
+  },
+  "~deepseek/deepseek-v4-pro-latest": {
+   "prompt": 0.0000374850291816,
+   "completion": 0.0001124550875448,
+   "cacheRead": 0.00000119270547396,
+   "cacheWrite": null
+  },
+  "~google/gemini-flash-latest": {
+   "prompt": 0.000082232865,
+   "completion": 0.000411164325,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": 0.000004568492500000001
+  },
+  "~google/gemini-pro-latest": {
+   "prompt": 0.00021928764,
+   "completion": 0.00131572584,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.0000411164325
+  },
+  "~moonshotai/kimi-latest": {
+   "prompt": 0.00005482191,
+   "completion": 0.000307002696,
+   "cacheRead": 0.00000635934156,
+   "cacheWrite": null
+  },
+  "~openai/gpt-latest": {
+   "prompt": 0.00021928764,
+   "completion": 0.0010964382,
+   "cacheRead": 0.000021928764,
+   "cacheWrite": 0.00027410955
+  },
+  "~openai/gpt-mini-latest": {
+   "prompt": 0.000082232865,
+   "completion": 0.00049339719,
+   "cacheRead": 0.0000082232865,
+   "cacheWrite": null
+  },
+  "~typesafe/jev-latest": {
+   "prompt": 0.00000460504044,
+   "completion": 0,
+   "cacheRead": null,
+   "cacheWrite": null
+  },
+  "~x-ai/grok-latest": {
+   "prompt": 0.000175430112,
+   "completion": 0.000526290336,
+   "cacheRead": 0.000043857528,
+   "cacheWrite": null
+  },
+  "~z-ai/glm-flash-latest": {
+   "prompt": 0.00000542736909,
+   "completion": 0.00001688514828,
+   "cacheRead": 0.00000120608202,
+   "cacheWrite": null
+  },
+  "~z-ai/glm-latest": {
+   "prompt": 0.00001957142187,
+   "completion": 0.00006151018302,
+   "cacheRead": 0.0000032153050215,
+   "cacheWrite": null
+  }
+ }
+}

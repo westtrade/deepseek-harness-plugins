@@ -1,0 +1,12 @@
+# Local scratch: verification scripts, minted cookies, screenshots.
+.scratch/
+
+# Editor and OS noise.
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Node noise — this repo ships plain ESM with no build step.
+node_modules/
+*.log
