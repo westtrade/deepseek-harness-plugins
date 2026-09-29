@@ -81,17 +81,22 @@ async function defaultPresetId(runtime) {
 /**
  * Model/provider selection for a new scheduled session.
  *
- * A job that names a model runs on exactly that route; otherwise the
- * deployment's current default is used, so an unconfigured job follows the
- * default when it changes.
+ * A job that names a model runs on exactly that route; otherwise `fallback`
+ * applies — the model most recently used in a chat, resolved by the caller so
+ * a new schedule follows what the person has actually been working in. The
+ * deployment default remains the last resort.
  *
  * @param runtime - resolved services.
  * @param job - the stored job record.
+ * @param fallback - preferred `{ provider, model }` for a job without one.
  * @returns `{ provider, model }`, or undefined when nothing could be resolved.
  */
-function agentOptionsFor(runtime, job) {
+function agentOptionsFor(runtime, job, fallback) {
 	if (job !== undefined && job !== null && job.model !== undefined && job.model !== null) {
 		return { provider: job.model.provider, model: job.model.model };
+	}
+	if (fallback !== undefined && fallback !== null && typeof fallback.provider === 'string' && typeof fallback.model === 'string') {
+		return { provider: fallback.provider, model: fallback.model };
 	}
 	try {
 		const selection = runtime.agentDefaultModel.currentSelection();
@@ -169,7 +174,7 @@ export async function runJob(runtime, job, options = {}) {
 	signal?.throwIfAborted();
 	const sessionId = `${SCHEDULED_SESSION_PREFIX}-${job.id.slice(0, 8)}-${now.toString(36)}`;
 	const presetId = await defaultPresetId(runtime);
-	const agentOptions = agentOptionsFor(runtime, job);
+	const agentOptions = agentOptionsFor(runtime, job, options.fallbackModel);
 	const handle = await runtime.agents.create({
 		sessionId,
 		signal,

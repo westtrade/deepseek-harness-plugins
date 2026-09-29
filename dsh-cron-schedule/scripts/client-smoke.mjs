@@ -134,9 +134,11 @@ ok('sidebar has a component', typeof sidebar?.component === 'function');
 ok('main has a component', typeof main?.component === 'function');
 // Sidebar row + main panel + the General-settings row.
 ok('exactly three registrations', host.registrations.length === 3, String(host.registrations.length));
-const settingsRow = host.registrations.find((entry) => entry.options.name === 'settings.general.item');
-ok('settings row registered', settingsRow !== undefined);
-ok('settings row has its own id', settingsRow?.options.id === 'cron-schedule-models', settingsRow?.options.id);
+const settingsRow = host.registrations.find((entry) => entry.options.name === 'settings.plugin.item');
+ok('plugin settings card registered', settingsRow !== undefined);
+// The Plugins tab dispatches this slot by settings namespace, so the key must be
+// the namespace the Host registers, not an arbitrary id.
+ok('card is keyed by the settings namespace', settingsRow?.options.key === 'cron-schedule', settingsRow?.options.key);
 
 // --- the picker bridge the panel is injected with ---
 const injected = main?.options.inject;
@@ -204,10 +206,16 @@ ok('clearing the picker sends null', source.includes('draft.modelKey === "" ? nu
 ok('editor pre-fills the stored model', source.includes('modelKey: modelKey(job.model)'));
 ok('panel loads the settings route', source.includes('SETTINGS_URL'));
 ok('panel filters choices by the allow-list', source.includes('restricted') && source.includes('settings.allowedModels.some'));
-ok('settings row registered on the General page', source.includes('settings.general.item'));
+ok('card lives on the Plugin Configuration tab', source.includes('settings.plugin.item') && !source.includes('settings.general.item'));
 ok('settings row saves the list', source.includes('{ allowedModels: rows }'));
 ok('settings row can add and remove entries', source.includes('settings.addModel') && source.includes('settings.remove'));
 ok('table shows the model column', source.includes('column.model'));
+// --- no stale "deployment default" label, and the card owns the list ---
+ok('the picker names the effective model, not a deployment default', source.includes('named === undefined ? fallback.model : named.name'));
+ok('the inherited model is marked in the table', source.includes('column.modelInherited'));
+ok('the card writes the allow-list', source.includes('{ allowedModels: rows }'));
+ok('the card reads the host settings route', source.includes('SETTINGS_URL'));
+ok('the card keeps its own namespace constant', source.includes('const SETTINGS_NAMESPACE = "cron-schedule"'));
 
 // --- chat reuse and the "always new chat" switch ---
 ok('form has a chat dropdown', source.includes('t("form.chatPick")') && source.includes('chats,'));

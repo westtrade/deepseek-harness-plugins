@@ -41,7 +41,7 @@ export const name = 'cron-schedule';
  * so the human-only `autoCatchUp` flag can be attributed to a real browser
  * session (see {@link makeTrustCheck}).
  */
-export const inject = ['webServer', 'connection', 'llm', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle', 'sessionController', 'sessionQuery'];
+export const inject = ['webServer', 'settings', 'connection', 'llm', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle', 'sessionController', 'sessionQuery', 'sessions', 'sessionProjections'];
 
 /** Exact route answering the job list and accepting mutations. */
 export const JOBS_PATH = '/api/cron-schedule/jobs';
@@ -90,6 +90,89 @@ async function readBody(req) {
 }
 
 /**
+ * Settings namespace this plugin publishes to the harness settings service.
+ *
+ * Registering here — rather than only keeping the value in the plugin's own
+ * file — is what makes the card appear on Settings → Plugins → Plugin
+ * Configuration, because that tab renders exactly the namespaces the Host
+ * serves. The plugin's own store stays the fallback for a deployment with no
+ * settings provider.
+ */
+export const SETTINGS_NAMESPACE = 'cron-schedule';
+
+/**
+ * A schemastery-shaped schema built without importing schemastery.
+ *
+ * The plugin may not import the harness's packages (a workspace symlink
+ * resolves to its real path, where they are unreachable), but the settings
+ * service only needs an object that is callable as a resolver and carries the
+ * introspection the service reads: a `toJSON()` for `describe()`, and
+ * `type`/`dict`/`inner`/`meta` for its secret walker. This provides exactly
+ * that, with the same defaults semantics — absent fields resolve to their
+ * defaults.
+ *
+ * @returns the schema object accepted by `settings.register`.
+ */
+function cronSettingsSchema() {
+	const route = { type: 'object', dict: { provider: { type: 'string' }, model: { type: 'string' } } };
+	const schema = (value) => {
+		const source = value !== null && typeof value === 'object' ? value : {};
+		const list = Array.isArray(source.allowedModels) ? source.allowedModels : [];
+		return {
+			allowedModels: list
+				.filter((entry) => entry !== null && typeof entry === 'object' && typeof entry.provider === 'string' && typeof entry.model === 'string')
+				.map((entry) => ({ provider: entry.provider, model: entry.model }))
+		};
+	};
+	schema.type = 'object';
+	schema.dict = { allowedModels: { type: 'array', inner: route } };
+	schema.meta = {};
+	schema.toJSON = () => ({
+		type: 'object',
+		properties: {
+			allowedModels: {
+				type: 'array',
+				description: 'Models a cron schedule may be assigned; empty means every routed model.',
+				items: { type: 'object', properties: { provider: { type: 'string' }, model: { type: 'string' } } }
+			}
+		}
+	});
+	return schema;
+}
+
+/**
+ * Publish the plugin's settings namespace and keep the plugin's own store in
+ * step with it, so the value survives whether it was written on the Plugins
+ * page or through this plugin's HTTP route.
+ *
+ * @param ctx - host context.
+ * @param store - the plugin's job store, whose settings section mirrors the
+ *   namespace for a deployment without a settings provider.
+ * @returns the settings scope, or undefined when no provider is composed.
+ */
+function registerSettingsSection(ctx, store, settings) {
+	try {
+		if (settings === undefined || settings === null || typeof settings.register !== 'function') return undefined;
+		const scope = settings.register(SETTINGS_NAMESPACE, cronSettingsSchema(), {
+			base: { allowedModels: store.settings().allowedModels },
+			applies: 'live'
+		});
+		// A write from the Plugins page must reach the cron routes, and a write
+		// from them must be visible there; mirroring both ways keeps one value.
+		scope.watch((next) => {
+			const list = Array.isArray(next?.allowedModels) ? next.allowedModels : [];
+			void store.setSettings({ allowedModels: list }).catch((error) => {
+				ctx.logger.warn(`cron-schedule: could not mirror settings into the store: ${String(error?.message ?? error)}`);
+			});
+		});
+		return scope;
+	} catch (error) {
+		ctx.logger.warn(`cron-schedule: settings namespace unavailable: ${String(error?.message ?? error)}`);
+		return undefined;
+	}
+}
+
+/**
  * Host plugin body: open the store, start the scheduler, register the routes and
  * the AI-facing tools.
  *
@@ -126,6 +209,11 @@ export async function apply(ctx, config = {}) {
 		// Reads each chat's own log so the dropdown shows real titles, including
 		// for stored-but-closed chats that have no live session object.
 		sessionQuery: ctx.sessionQuery,
+		// The live session store, for reading a chat's last-used model.
+		sessions: ctx.sessions,
+		// Publishes this plugin's settings namespace to the Plugins page.
+		settings: ctx.settings,
+		sessionProjections: ctx.sessionProjections,
 		// The model catalog, for the panel's model pickers and for validating the
 		// allow-list against models this deployment can really route.
 		llm: ctx.llm,
@@ -142,7 +230,9 @@ export async function apply(ctx, config = {}) {
 		onChange: () => {
 			revision += 1;
 		},
-		run: (job, options) => runJob(runtime, job, options)
+		// A run without its own model follows the model used most recently in a
+		// chat; that resolution is async, so it is awaited here and handed in.
+		run: async (job, options) => runJob(runtime, job, { ...options, fallbackModel: await preferredModel() })
 	});
 
 	ctx.effect(() => () => {
@@ -222,8 +312,56 @@ export async function apply(ctx, config = {}) {
 		return { models, failures };
 	}
 
-	/** The current allow-list, as the store holds it. */
-	const allowedModels = () => store.settings().allowedModels;
+	/**
+	 * The plugin's own settings namespace, registered with the harness settings
+	 * service so it appears on Settings → Plugins → Plugin Configuration beside
+	 * the shipped cards. The store keeps the same value as a fallback for a
+	 * deployment that composes no settings provider.
+	 */
+	const settingsSection = registerSettingsSection(ctx, store, runtime.settings);
+
+	/** The current allow-list: the settings namespace first, the store otherwise. */
+	const allowedModels = () => {
+		const fromSettings = settingsSection?.get()?.allowedModels;
+		return Array.isArray(fromSettings) && fromSettings.length > 0 ? fromSettings : store.settings().allowedModels;
+	};
+
+	/**
+	 * The model a schedule falls back to when it names none.
+	 *
+	 * That is the model most recently used in a chat — the same one the composer's
+	 * picker shows — so a person who has been working in one model gets it for a
+	 * new schedule too. The deployment default is only the last resort.
+	 *
+	 * @returns `{ provider, model }`, or undefined when nothing is known.
+	 */
+	async function preferredModel() {
+		try {
+			const controller = runtime.sessionController;
+			if (controller !== undefined && typeof controller.list === 'function') {
+				const raw = await controller.list();
+				const sessions = Array.isArray(raw) ? raw : (Array.isArray(raw?.value) ? raw.value : (Array.isArray(raw?.items) ? raw.items : []));
+				const ordered = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+				for (const entry of ordered.slice(0, 25)) {
+					const session = runtime.sessions?.get?.(entry.sessionId);
+					if (session === undefined) continue;
+					const state = runtime.sessionProjections?.stateOf?.(session, 'modelSelection');
+					const used = state?.lastUsed;
+					if (used !== null && used !== undefined && typeof used.provider === 'string' && typeof used.model === 'string') {
+						return { provider: used.provider, model: used.model };
+					}
+				}
+			}
+		} catch (error) {
+			ctx.logger.warn(`cron-schedule: could not read the last used model: ${String(error?.message ?? error)}`);
+		}
+		try {
+			const selection = runtime.agentDefaultModel.currentSelection();
+			return { provider: selection.provider, model: selection.model };
+		} catch {
+			return undefined;
+		}
+	}
 
 	/**
 	 * The catalog as a flat `{ provider, model }` list, for validation.
@@ -414,18 +552,14 @@ export async function apply(ctx, config = {}) {
 		try {
 			if (req.method === 'GET' || req.method === 'HEAD') {
 				const catalog = await modelCatalog();
-				let fallback = null;
-				try {
-					const selection = runtime.agentDefaultModel.currentSelection();
-					fallback = { provider: selection.provider, model: selection.model };
-				} catch {
-					fallback = null;
-				}
+				// `default` is the model a schedule without its own choice runs on:
+				// the most recently used one in a chat, not the deployment default.
+				const fallback = await preferredModel();
 				sendJson(res, 200, {
 					allowedModels: allowedModels(),
 					models: catalog.models,
 					failures: catalog.failures,
-					default: fallback
+					default: fallback ?? null
 				});
 				return;
 			}
@@ -442,6 +576,13 @@ export async function apply(ctx, config = {}) {
 			const available = catalog.models.map((entry) => ({ provider: entry.provider, model: entry.model }));
 			const next = normalizeAllowedModels(body.allowedModels, available);
 			await store.setSettings({ allowedModels: next });
+			// Keep the settings namespace authoritative too, so the Plugins page
+			// shows the same list this route just stored.
+			try {
+				await settingsSection?.replace({ allowedModels: next });
+			} catch (error) {
+				ctx.logger.warn(`cron-schedule: could not update the settings namespace: ${String(error?.message ?? error)}`);
+			}
 			revision += 1;
 			sendJson(res, 200, { ok: true, allowedModels: allowedModels() });
 		} catch (error) {

@@ -18,6 +18,8 @@ window.__ModuleLoader__.load({
 		const SETTINGS_URL = "/api/cron-schedule/settings";
 		/** Host route listing the chats a schedule can post into. */
 		const CHATS_URL = "/api/cron-schedule/chats";
+		/** Settings namespace the Host registers; also this card's slot key. */
+		const SETTINGS_NAMESPACE = "cron-schedule";
 		/** Poll interval while the panel is open. */
 		const REFRESH_MS = 20000;
 		const en = {
@@ -66,7 +68,8 @@ window.__ModuleLoader__.load({
 			"column.chatNew": "new each run",
 			"column.chatUnbound": "not yet created",
 			"form.model": "Model",
-			"form.modelDefault": "Deployment default",
+			"form.modelDefault": "Default",
+			"column.modelInherited": "last used",
 			"form.modelRestricted": "Only models allowed in Settings can be picked",
 			"form.autoCatchUp": "Catch up missed runs after a restart",
 			"form.autoCatchUpHint": "On: runs missed while DSH was off start by themselves at the next launch. Off: they wait for you to press Run. Only a person can change this.",
@@ -150,7 +153,8 @@ window.__ModuleLoader__.load({
 			"column.chatNew": "每次新建",
 			"column.chatUnbound": "尚未创建",
 			"form.model": "模型",
-			"form.modelDefault": "部署默认",
+			"form.modelDefault": "默认",
+			"column.modelInherited": "上次使用",
 			"form.modelRestricted": "只能选择在设置中允许的模型",
 			"form.autoCatchUp": "重启后自动补跑错过的任务",
 			"form.autoCatchUpHint": "开启：DSH 关闭期间错过的运行会在下次启动时自行开始。关闭：等待你点击「补跑」。只有人可以修改此项。",
@@ -343,7 +347,7 @@ window.__ModuleLoader__.load({
 			return payload;
 		}
 		/** One row in the schedules table. */
-		function JobRow({ job, t, editing, chats, onEdit, onChanged, onError }) {
+		function JobRow({ job, t, editing, chats, defaultModel, onEdit, onChanged, onError }) {
 			const [busy, setBusy] = react.useState(null);
 			const next = formatAt(job.nextRunAt, job.timeZone);
 			const last = formatAt(job.lastRunAt, job.timeZone);
@@ -426,7 +430,9 @@ window.__ModuleLoader__.load({
 						wordBreak: "break-all"
 					}
 				}, job.model === null || job.model === undefined
-					? t("form.modelDefault")
+					? (defaultModel === null || defaultModel === undefined || typeof defaultModel.model !== "string"
+						? t("form.modelDefault")
+						: `${defaultModel.model} (${t("column.modelInherited")})`)
 					: `${job.model.provider}/${job.model.model}`),
 				el("td", {
 					style: {
@@ -725,9 +731,16 @@ window.__ModuleLoader__.load({
 						title: restricted ? t("form.modelRestricted") : undefined,
 						onChange: (event) => set({ modelKey: event.target.value })
 					},
-						el("option", { value: "" }, defaultModel === null || defaultModel === undefined
-							? t("form.modelDefault")
-							: `${t("form.modelDefault")} — ${defaultModel.model}`),
+						// The empty choice means "use the model a run would default
+						// to": the one last used in a chat. Its label names that model
+						// instead of the deployment default, which is only a last
+						// resort and would otherwise be misleading here.
+						el("option", { value: "" }, (() => {
+							const fallback = defaultModel;
+							if (fallback === null || fallback === undefined || typeof fallback.model !== "string") return t("form.modelDefault");
+							const named = (models ?? []).find((entry) => entry.provider === fallback.provider && entry.model === fallback.model);
+							return `${t("form.modelDefault")} — ${named === undefined ? fallback.model : named.name}`;
+						})()),
 						(models ?? []).map((entry) => el("option", {
 							key: `${entry.provider}\u0000${entry.model}`,
 							value: `${entry.provider}\u0000${entry.model}`
@@ -975,6 +988,7 @@ window.__ModuleLoader__.load({
 												job,
 												t,
 												chats,
+												defaultModel: settings.default,
 												editing: job.id === editingId,
 												onEdit: (id) => setEditingId((current) => (current === id ? null : id)),
 												onChanged: load,
@@ -1144,14 +1158,15 @@ window.__ModuleLoader__.load({
 				locale: NS,
 				inject: () => ({ pickDirectory: () => ctx.uiWorkspace.pickDirectory() })
 			}, CronPanel)), "cron-schedule: panel body");
-			// The model allow-list lives on the General settings page, next to the
-			// other deployment-wide choices.
-			ctx.effect(() => ctx.slots.inject("settings.general.item", () => ctx.slots.register({
-				name: "settings.general.item",
-				id: "cron-schedule-models",
-				order: 60,
+			// The model allow-list is a Plugin Configuration card. The tab
+			// dispatches `settings.plugin.item` by settings namespace, so the key
+			// must be the namespace the Host registers — that pairing is what makes
+			// the card appear under Settings → Plugins → Plugin Configuration.
+			ctx.effect(() => ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
+				name: "settings.plugin.item",
+				key: SETTINGS_NAMESPACE,
 				locale: NS
-			}, ModelAllowListRow)), "cron-schedule: settings row");
+			}, ModelAllowListRow)), "cron-schedule: plugin settings card");
 		}
 		//#endregion
 		exports.apply = apply;

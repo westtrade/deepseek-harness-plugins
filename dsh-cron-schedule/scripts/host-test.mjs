@@ -192,6 +192,21 @@ function fakeContext() {
 				return [];
 			}
 		},
+		/** Settings provider: records the namespace the plugin registers. */
+		settings: {
+			registered: new Map(),
+			register(ns, schema) {
+				this.registered.set(ns, schema);
+				let value = schema({});
+				const watchers = [];
+				return {
+					get: () => value,
+					watch: (cb) => { watchers.push(cb); return () => {}; },
+					replace: async (next) => { value = schema(next); for (const cb of watchers) cb(value, value); },
+					update: async (patch) => { value = schema({ ...value, ...patch }); for (const cb of watchers) cb(value, value); }
+				};
+			}
+		},
 		/** The model catalog the plugin reads for its pickers and allow-list checks. */
 		llm: {
 			providers: [
@@ -318,6 +333,16 @@ try {
 		ok(`tool ${toolName} present`, host.tools.has(toolName));
 	}
 	ok('scheduler stop effect registered', host.effects.includes('cron-schedule: scheduler stop'));
+
+	// --- the settings namespace, so the card appears under Plugin Configuration ---
+	ok('settings namespace registered', host.ctx.settings.registered.has('cron-schedule'), [...host.ctx.settings.registered.keys()].join(','));
+	const registeredSchema = host.ctx.settings.registered.get('cron-schedule');
+	ok('namespace schema is callable as a resolver', typeof registeredSchema === 'function');
+	ok('namespace schema resolves defaults', Array.isArray(registeredSchema({}).allowedModels) && registeredSchema({}).allowedModels.length === 0);
+	ok('namespace schema drops malformed entries', registeredSchema({ allowedModels: [{ provider: 'a', model: 'b' }, { nope: 1 }, null] }).allowedModels.length === 1);
+	// A settings service introspects the schema; both calls must not throw.
+	ok('namespace schema exposes toJSON for describe()', typeof registeredSchema.toJSON === 'function' && registeredSchema.toJSON().type === 'object');
+	ok('namespace schema exposes the secret-walker shape', registeredSchema.type === 'object' && typeof registeredSchema.dict === 'object');
 
 	// Reproduce the real `webServer.match` precedence: an exact hit first, then
 	// longest-prefix where a prefix matches `p` and `p/<rest>`. This is the
