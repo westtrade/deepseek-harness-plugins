@@ -482,30 +482,64 @@ export async function apply(ctx, config = {}) {
 	const titleCache = new Map();
 	const TITLE_MISS_TTL_MS = 30000;
 
+	/**
+	 * The name of one chat, folded from its own log.
+	 *
+	 * The `session/title` event is the source of truth (the same fold the harness
+	 * uses for the sidebar). A chat that never got a stored title — one whose
+	 * title generation never ran, which is the norm for sessions created
+	 * programmatically — falls back to the opening of its first user message, the
+	 * same input the harness itself derives a fallback title from. Returning
+	 * `undefined` here would make the caller show a bare directory path, which
+	 * tells the reader nothing about the conversation.
+	 *
+	 * @param sessionId - the session to look up.
+	 * @returns the title, or undefined when the chat has no usable text at all.
+	 */
 	async function titleOf(sessionId) {
 		const cached = titleCache.get(sessionId);
 		if (cached !== undefined && (cached.title !== undefined || Date.now() - cached.at < TITLE_MISS_TTL_MS)) {
 			return cached.title;
 		}
 		const query = runtime.sessionQuery;
-		if (query === undefined || typeof query.readSession !== 'function') return undefined;
+		if (query === undefined) return undefined;
+		let title;
 		try {
-			const record = await query.readSession(sessionId);
-			const events = Array.isArray(record?.events) ? record.events : [];
-			for (let index = events.length - 1; index >= 0; index -= 1) {
-				const event = events[index];
-				if (event?.type !== 'session/title') continue;
-				const title = event.data?.title;
-				if (typeof title === 'string' && title.trim() !== '') {
-					titleCache.set(sessionId, { at: Date.now(), title });
-					return title;
-				}
+			// `readTitle` is the harness's own log-backed fold and, unlike a full
+			// `readSession`, it does not re-validate the log: a forked session's
+			// inherited prefix fails that validation, which is why every fork
+			// previously fell through to showing its directory path.
+			if (typeof query.readTitle === 'function') {
+				const snapshot = await query.readTitle(sessionId);
+				const text = snapshot?.title;
+				if (typeof text === 'string' && text.trim() !== '') title = text;
 			}
 		} catch (error) {
 			ctx.logger.warn(`cron-schedule: could not read the title of "${sessionId}": ${String(error?.message ?? error)}`);
 		}
-		titleCache.set(sessionId, { at: Date.now(), title: undefined });
-		return undefined;
+		if (title === undefined) {
+			// No stored title: derive one from the first real user message, the same
+			// input the harness's own fallback title uses. A session whose title
+			// generation never ran — the norm for programmatically created chats —
+			// would otherwise show only a bare directory path.
+			try {
+				const events = typeof query.listEvents === 'function' ? await query.listEvents(sessionId) : [];
+				for (const event of Array.isArray(events) ? events : []) {
+					if (event?.type !== 'user/message') continue;
+					if (event.data?.source?.kind !== 'user') continue;
+					const content = Array.isArray(event.data?.content) ? event.data.content : [];
+					const text = content.filter((block) => block?.type === 'text').map((block) => block.text).join('\n').trim();
+					if (text === '') continue;
+					const words = text.split(/\s+/).slice(0, 8).join(' ');
+					title = words.length > 60 ? `${words.slice(0, 57)}…` : words;
+					break;
+				}
+			} catch (error) {
+				ctx.logger.warn(`cron-schedule: could not derive a name for "${sessionId}": ${String(error?.message ?? error)}`);
+			}
+		}
+		titleCache.set(sessionId, { at: Date.now(), title });
+		return title;
 	}
 
 	/**
@@ -538,7 +572,8 @@ export async function apply(ctx, config = {}) {
 	 * @param cwd - when given, only chats created in that directory. Filtering
 	 *   happens BEFORE the page limit, so a workspace's chats can never be
 	 *   pushed out of the list by newer chats from other projects.
-	 * @returns the chat rows, newest first, without archived or subagent chats.
+	 * @returns the chat rows, newest first, without archived, subagent or blank
+	 *   chats, each with a readable name.
 	 */
 	async function listChats(limit = 100, cwd) {
 		const controller = runtime.sessionController;
@@ -554,8 +589,11 @@ export async function apply(ctx, config = {}) {
 		// so a schedule must never post into one. The test is `origin` alone —
 		// `parentSessionId` is NOT a proxy, because a forked chat also carries a
 		// parent and is an ordinary chat the person may well want to reuse.
+		// Blank sessions are hidden as well: a chat with no messages is a chat the
+		// person never used, and it would show up with no name to recognise.
 		const visible = sessions.filter((entry) => !archived.has(entry.sessionId)
-			&& entry.origin !== 'subagent');
+			&& entry.origin !== 'subagent'
+			&& entry.blank !== true);
 		const scoped = typeof cwd === 'string' && cwd !== ''
 			? visible.filter((entry) => entry.cwd === cwd)
 			: visible;

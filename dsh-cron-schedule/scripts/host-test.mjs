@@ -165,18 +165,31 @@ function fakeContext() {
 					// A subagent child: must never be offered for reuse.
 					{ sessionId: 'session-worker', cwd: '/tmp/alpha', updatedAt: 400, running: false, origin: 'subagent', parentSessionId: 'session-alpha' },
 					// A FORK: it has a parent but is an ordinary chat, so it stays.
-					{ sessionId: 'session-fork', cwd: '/tmp/alpha', updatedAt: 250, running: false, parentSessionId: 'session-alpha' }
+					{ sessionId: 'session-fork', cwd: '/tmp/alpha', updatedAt: 250, running: false, parentSessionId: 'session-alpha' },
+					// An unused, never-messaged session: no name to recognise it by.
+					{ sessionId: 'session-blank', cwd: '/tmp/alpha', updatedAt: 500, running: false, blank: true }
 				];
 			}
 		},
-		/** Titles are folded from each chat's own log; the fake returns one event. */
+		/** Titles come from the harness's own folds; the fake mimics both readers. */
 		sessionQuery: {
 			async readSession(sessionId) {
-				return {
-					events: sessionId === 'session-alpha'
-						? [{ type: 'session/title', data: { title: 'Alpha chat' } }]
-						: []
-				};
+				return { events: [] };
+			},
+			async readTitle(sessionId) {
+				return sessionId === 'session-alpha' ? { title: 'Alpha chat' } : undefined;
+			},
+			async listEvents(sessionId) {
+				// A session with messages but no stored title: the name must be
+				// derived from the opening user message instead of a path.
+				if (sessionId === 'session-fork') {
+					return [{ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Починить вёрстку на странице отзывов' }] } }];
+				}
+				// A plugin-sourced message is not a person's prompt and must be ignored.
+				if (sessionId === 'session-alpha') {
+					return [{ type: 'user/message', data: { source: { kind: 'plugin' }, content: [{ type: 'text', text: 'runtime context snapshot' }] } }];
+				}
+				return [];
 			}
 		},
 		/** The model catalog the plugin reads for its pickers and allow-list checks. */
@@ -591,6 +604,10 @@ try {
 	ok('archived chats are hidden', unfiltered.body.chats.every((chat) => chat.sessionId !== 'session-beta'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
 	ok('subagent chats are hidden', unfiltered.body.chats.every((chat) => chat.sessionId !== 'session-worker'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
 	ok('a forked chat is NOT hidden', unfiltered.body.chats.some((chat) => chat.sessionId === 'session-fork'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
+	ok('a blank chat is hidden', unfiltered.body.chats.every((chat) => chat.sessionId !== 'session-blank'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
+	ok('a chat without a stored title is named from its first prompt', unfiltered.body.chats.find((chat) => chat.sessionId === 'session-fork')?.title === 'Починить вёрстку на странице отзывов', JSON.stringify(unfiltered.body.chats.find((chat) => chat.sessionId === 'session-fork')?.title));
+	ok('a plugin message is not used as a name', unfiltered.body.chats.find((chat) => chat.sessionId === 'session-alpha')?.title === 'Alpha chat', JSON.stringify(unfiltered.body.chats.find((chat) => chat.sessionId === 'session-alpha')?.title));
+	ok('no chat is named after a path', unfiltered.body.chats.every((chat) => !chat.title.startsWith('/')), JSON.stringify(unfiltered.body.chats.map((chat) => chat.title)));
 	ok('an archived chat is gone from a filtered view too', betaOnly.body.chats.length === 0, JSON.stringify(betaOnly.body.chats));
 	ok('unarchived chats survive', unfiltered.body.chats.some((chat) => chat.sessionId === 'session-alpha'));
 	// Two sessions exist, but one is archived, so only the unarchived one lists.
