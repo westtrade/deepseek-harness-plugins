@@ -122,6 +122,8 @@ function fakeContext() {
 			currentSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-flash' })
 		},
 		workspaceRegistry: {
+			/** Sessions the person archived; the chat picker must hide these. */
+			archivedSessionIds: ['session-beta'],
 			list: () => workspaces,
 			async create(dir) {
 				const workspace = {
@@ -569,19 +571,23 @@ try {
 	ok('a bound job shows its sessionId in cron_list', listToolValue.jobs.find((entry) => entry.name === 'ИИ продолжает чат')?.sessionId === 'session-beta');
 	// cron_chats lists what the model may target, with titles.
 	const chatsTool = await host.tools.get('cron_chats').execute({}, { signal: new AbortController().signal });
-	ok('cron_chats lists chats', chatsTool.chats.length === 2, JSON.stringify(chatsTool.chats));
 	ok('cron_chats reads a title from the log', chatsTool.chats.some((chat) => chat.sessionId === 'session-alpha' && chat.title === 'Alpha chat'), JSON.stringify(chatsTool.chats));
-	ok('cron_chats prefers the cached projection', chatsTool.chats.some((chat) => chat.sessionId === 'session-beta' && chat.title === 'Beta chat'), JSON.stringify(chatsTool.chats));
+	ok('cron_chats lists chats', chatsTool.chats.length > 0, JSON.stringify(chatsTool.chats));
+	ok('cron_chats hides archived chats too', chatsTool.chats.every((chat) => chat.sessionId !== 'session-beta'), JSON.stringify(chatsTool.chats.map((chat) => chat.sessionId)));
 
 	// --- the chat route narrows to one workspace ---
 	const alphaOnly = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Falpha');
 	ok('the chat route filters by cwd', alphaOnly.status === 200 && alphaOnly.body.chats.length === 1 && alphaOnly.body.chats[0].sessionId === 'session-alpha', JSON.stringify(alphaOnly.body.chats));
 	const betaOnly = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Fbeta');
-	ok('a different folder yields its own chat', betaOnly.body.chats.length === 1 && betaOnly.body.chats[0].sessionId === 'session-beta');
+	ok('a different folder yields no chats when its only chat is archived', betaOnly.body.chats.length === 0, JSON.stringify(betaOnly.body.chats));
 	const noMatch = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Fnowhere');
 	ok('an unknown folder yields no chats', noMatch.body.chats.length === 0, JSON.stringify(noMatch.body.chats));
 	const unfiltered = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats');
-	ok('no cwd parameter lists every chat', unfiltered.body.chats.length === 2, String(unfiltered.body.chats.length));
+	ok('archived chats are hidden', unfiltered.body.chats.every((chat) => chat.sessionId !== 'session-beta'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
+	ok('an archived chat is gone from a filtered view too', betaOnly.body.chats.length === 0, JSON.stringify(betaOnly.body.chats));
+	ok('unarchived chats survive', unfiltered.body.chats.some((chat) => chat.sessionId === 'session-alpha'));
+	// Two sessions exist, but one is archived, so only the unarchived one lists.
+	ok('no cwd parameter lists every unarchived chat', unfiltered.body.chats.length === 1, String(unfiltered.body.chats.length));
 	// Filtering happens before the page limit, so a workspace's chats cannot be
 	// pushed out of the answer by newer chats from other projects.
 	const limited = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Falpha');

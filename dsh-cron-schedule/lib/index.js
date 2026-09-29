@@ -509,6 +509,24 @@ export async function apply(ctx, config = {}) {
 	}
 
 	/**
+	 * The archived session ids, as the workspace registry holds them.
+	 *
+	 * A missing registry (a headless composition) means nothing is archived, so
+	 * the list stays complete rather than silently emptying.
+	 *
+	 * @returns an array of session ids.
+	 */
+	function archivedSessionIds() {
+		try {
+			const ids = runtime.workspaceRegistry?.archivedSessionIds;
+			return Array.isArray(ids) ? ids.map(String) : [];
+		} catch (error) {
+			ctx.logger.warn(`cron-schedule: could not read the archived-session set: ${String(error?.message ?? error)}`);
+			return [];
+		}
+	}
+
+	/**
 	 * The chat list a run may be bound to, newest activity first.
 	 *
 	 * Cost matters here: a deployment can hold hundreds of stored sessions, and
@@ -520,7 +538,7 @@ export async function apply(ctx, config = {}) {
 	 * @param cwd - when given, only chats created in that directory. Filtering
 	 *   happens BEFORE the page limit, so a workspace's chats can never be
 	 *   pushed out of the list by newer chats from other projects.
-	 * @returns the chat rows, newest first.
+	 * @returns the chat rows, newest first, without archived chats.
 	 */
 	async function listChats(limit = 100, cwd) {
 		const controller = runtime.sessionController;
@@ -529,9 +547,13 @@ export async function apply(ctx, config = {}) {
 		// A remote-wrapped controller answers `{ ok, value }`; a direct service
 		// call answers the array. Accept both so the route is transport-agnostic.
 		const sessions = Array.isArray(raw) ? raw : (Array.isArray(raw?.value) ? raw.value : (Array.isArray(raw?.items) ? raw.items : []));
+		// Archived chats are hidden on purpose: the person put them away, so
+		// offering them for reuse would resurface exactly what they filed off.
+		const archived = new Set(archivedSessionIds());
+		const visible = sessions.filter((entry) => !archived.has(entry.sessionId));
 		const scoped = typeof cwd === 'string' && cwd !== ''
-			? sessions.filter((entry) => entry.cwd === cwd)
-			: sessions;
+			? visible.filter((entry) => entry.cwd === cwd)
+			: visible;
 		const ordered = [...scoped].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 		const page = Number.isFinite(limit) && limit > 0 ? ordered.slice(0, limit) : ordered;
 		const rows = new Array(page.length);
