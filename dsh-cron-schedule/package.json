@@ -1,0 +1,38 @@
+{
+  "name": "dsh-cron-schedule",
+  "version": "0.1.0",
+  "description": "Cron scheduler for DeepSeek Harness: durable AI task schedules that start a new chat in a chosen workspace when due, with a management panel and model-facing tools",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/cron-test.mjs && node scripts/store-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test:cron": "node scripts/cron-test.mjs",
+    "test:host": "node scripts/host-test.mjs",
+    "test:client": "node scripts/client-smoke.mjs"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "cron",
+    "scheduler",
+    "automation"
+  ],
+  "license": "MIT"
+}
