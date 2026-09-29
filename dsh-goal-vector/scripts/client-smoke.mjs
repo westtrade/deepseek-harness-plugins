@@ -159,6 +159,11 @@ ok('the editor drops blank trailing rows', source.includes('filter((goal) => goa
 ok('the selector offers a "no vector" option', source.includes('t("composer.none")'));
 ok('the selector sends the adopting chat id', source.includes('{ sessionId, vectorId: next === "" ? null : next }'));
 ok('the selector does NOT read a session projection', !source.includes('useProjection'), 'the selection lives in the Host store, not in the session log');
+ok('the page explains what a goals vector is', source.includes('function AboutVector(') && source.includes('el(AboutVector, { t })'));
+ok('the explanation defines the term', source.includes('about.goal') && source.includes('about.lead'));
+ok('the explanation stresses the reverse drop order', source.includes('about.order') && source.includes('about.summary'));
+ok('the explanation keeps the measure-of-quality point', source.includes('about.measure'));
+ok('the explanation is collapsible and open by default', source.includes('react.useState(true)') && source.includes('setOpen(!open)'));
 
 console.log('client wiring OK');
 console.log(`  module id : ${captured.id}`);

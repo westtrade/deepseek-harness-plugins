@@ -57,7 +57,18 @@ window.__ModuleLoader__.load({
 		}
 		const en = {
 			"panel.title": "Goals vectors",
-			"panel.subtitle": "A goals vector is a priority-ordered list of goals for the AI: goal 1 matters most, and the lowest-priority goals are the ones to drop first",
+			"panel.subtitle": "Priority-ordered goals the AI follows while working in a project",
+			"about.title": "What is a goals vector?",
+			"about.lead": "A goals vector describes the ideal way an object should work — one chosen out of all the ways it objectively could work. Here it is the list of goals for the AI working in a project.",
+			"about.goalTerm": "Goal —",
+			"about.goal": "the end result to be reached: an ideal, a material or spiritual need, a task to be solved, a parameter of the thing being built, a plan.",
+			"about.orderTerm": "Order —",
+			"about.order": "the vector is built by subjective choice, as a hierarchy of particular goals. Their order is the reverse of the order in which they would have to be abandoned: goal 1 is the most important, the last goal is the least significant. So when not everything can be achieved, the lowest-priority goals are given up first.",
+			"about.measureTerm": "Measure —",
+			"about.measure": "each goal needs a measure of quality (parameters). That is what makes vectors comparable — they can then be meaningfully added and subtracted.",
+			"about.summary": "In short: a numbered list of what we want, numbered in the reverse order of forced abandonment.",
+			"about.exampleTitle": "Example",
+			"about.example": "a release vector — 1. do not break existing tests · 2. keep the project's style · 3. touch as few files as possible",
 			"panel.loading": "Loading…",
 			"panel.error": "Goals-vector service unavailable: {message}",
 			"panel.empty": "No goals vectors yet. Add one below.",
@@ -96,7 +107,18 @@ window.__ModuleLoader__.load({
 		};
 		const zh = {
 			"panel.title": "目标向量",
-			"panel.subtitle": "目标向量是按优先级排列的目标清单：第 1 条最重要，优先级最低的目标最先放弃",
+			"panel.subtitle": "AI 在项目中工作时遵循的按优先级排列的目标清单",
+			"about.title": "什么是目标向量？",
+			"about.lead": "目标向量描述对象理想的运行方式——是从所有客观上可能的方式中选定的那一种。在这里，它就是 AI 在项目中工作时所遵循的目标清单。",
+			"about.goalTerm": "目标——",
+			"about.goal": "要达到的最终结果：理想、物质或精神上的需要、需要解决的任务、所开发产品的参数、计划等。",
+			"about.orderTerm": "顺序——",
+			"about.order": "目标向量按主观意愿构建为分层排列的若干具体目标。其顺序与被迫放弃的顺序相反：第 1 条最重要，最后一条最次要。因此当无法全部实现时，优先放弃优先级最低的目标。",
+			"about.measureTerm": "度量——",
+			"about.measure": "每个目标都需要有某种意义上的质量度量（参数）。有了它，向量之间才可比较，相加与相减才有意义。",
+			"about.summary": "简言之：一份带编号的期望清单，编号顺序与被迫放弃的顺序相反。",
+			"about.exampleTitle": "示例",
+			"about.example": "发布向量 —— 1. 不破坏现有测试 · 2. 保持项目风格 · 3. 尽量少改动文件",
 			"panel.loading": "加载中…",
 			"panel.error": "目标向量服务不可用：{message}",
 			"panel.empty": "还没有目标向量，请在下方添加。",
@@ -326,6 +348,62 @@ window.__ModuleLoader__.load({
 					" ",
 					button(t("vector.delete"), remove, { compact: true, disabled: busy })));
 		}
+		/**
+		* What a goals vector is, in the words the idea comes from.
+		*
+		* Shown on the management page because the concept is not self-evident from
+		* the form alone: the whole point is that the ORDER carries the meaning, and
+		* a reader who misses that will fill the list in the wrong direction.
+		*
+		* Collapsible (open by default) so the page stays workable once the idea is
+		* familiar.
+		*/
+		function AboutVector({ t }) {
+			const [open, setOpen] = react.useState(true);
+			const paragraph = (text, key) => el("p", { key, style: { margin: "0 0 8px", fontSize: "12.5px", lineHeight: "19px", color: "var(--dsw-alias-label-secondary, inherit)" } }, text);
+			const term = (label, text, key) => el("div", { key, style: { display: "flex", gap: "8px", fontSize: "12.5px", lineHeight: "19px", color: "var(--dsw-alias-label-secondary, inherit)" } },
+				el("span", { style: { flex: "none", fontWeight: 600, color: "var(--dsw-alias-label-primary, inherit)" } }, label),
+				el("span", null, text));
+			return el("div", {
+				style: {
+					border: "1px solid var(--dsw-alias-border-l4, #d0d3d6)",
+					borderRadius: "10px",
+					background: "var(--dsw-alias-bg-elevated, transparent)",
+					padding: "12px 14px"
+				}
+			},
+				el("button", {
+					type: "button",
+					onClick: () => setOpen(!open),
+					style: {
+						display: "flex",
+						alignItems: "center",
+						gap: "6px",
+						width: "100%",
+						padding: 0,
+						border: "none",
+						background: "transparent",
+						color: "var(--dsw-alias-label-primary, inherit)",
+						font: "inherit",
+						fontSize: "13px",
+						fontWeight: 600,
+						cursor: "pointer",
+						textAlign: "left"
+					}
+				},
+					el("span", { "aria-hidden": true, style: { display: "inline-flex", transition: "transform .12s", transform: open ? "rotate(90deg)" : "none" } }, "▸"),
+					t("about.title")),
+				open ? el("div", { style: { marginTop: "8px" } },
+					paragraph(t("about.lead"), "lead"),
+					term(t("about.goalTerm"), t("about.goal"), "goal"),
+					el("div", { style: { height: "6px" } }),
+					term(t("about.orderTerm"), t("about.order"), "order"),
+					el("div", { style: { height: "6px" } }),
+					term(t("about.measureTerm"), t("about.measure"), "measure"),
+					el("p", { style: { margin: "10px 0 0", fontSize: "12.5px", lineHeight: "19px", fontWeight: 600, color: "var(--dsw-alias-label-primary, inherit)" } }, t("about.summary")),
+					el("p", { style: { margin: "8px 0 0", fontSize: "12px", lineHeight: "18px", color: "var(--dsw-alias-label-tertiary, inherit)" } },
+						`${t("about.exampleTitle")}: ${t("about.example")}`)) : null);
+		}
 		/** The management page: the vectors table with an in-place editor. */
 		function GoalVectorPanel({ t }) {
 			const [state, setState] = react.useState({ vectors: [], loading: true, error: null });
@@ -391,6 +469,7 @@ window.__ModuleLoader__.load({
 				el("div", null,
 					el("h2", { style: { margin: "0 0 4px", fontSize: "16px" } }, t("panel.title")),
 					el("div", { style: { fontSize: "12px", color: "var(--dsw-alias-label-tertiary, inherit)" } }, t("panel.subtitle"))),
+				el(AboutVector, { t }),
 				state.error === null ? null : el("div", { style: { color: "var(--dsw-alias-state-error-primary, #c0392b)", fontSize: "13px" } }, fill(t("panel.error"), { message: state.error })),
 				notice === null ? null : el("div", { style: { fontSize: "13px", color: "var(--dsw-alias-label-secondary, inherit)" } }, notice),
 				el("div", { style: { display: "flex", gap: "8px", alignItems: "center" } },
