@@ -45,6 +45,28 @@ node dsh-cron-schedule/scripts/client-smoke.mjs # обвязка панели
 
 Подробности и установка: [dsh-cron-schedule/README.md](dsh-cron-schedule/README.md).
 
+## `dsh-goal-vector`
+
+Векторы целей (ВЦ) для ИИ: именованный список целей, упорядоченный **по
+приоритету**, которому модель следует во время работы (первая цель — самая
+важная, последняя — та, от которой отказываются первой). В веб-интерфейсе —
+страница **«Goals vectors»** с созданием, редактированием, удалением и
+перестановкой целей стрелками, а также **селектор в композере** рядом с
+«Workspace Write»: им выбирается ВЦ для текущего чата (по умолчанию —
+**«No vector»**, обычный режим). Пока ВЦ принят, он подставляется в системный
+промпт на каждом шаге модели и действует до снятия. ИИ сам может создавать ВЦ,
+принимать их и запускать **подагента с ВЦ** через инструменты
+`goal_vector_list`, `goal_vector_create`, `goal_vector_adopt`,
+`goal_vector_delegate`.
+
+```sh
+node dsh-goal-vector/scripts/store-test.mjs    # хранилище и выборы чатов
+node dsh-goal-vector/scripts/host-test.mjs     # маршруты, промпт, инструменты
+node dsh-goal-vector/scripts/client-smoke.mjs  # обвязка панели и селектора
+```
+
+Подробности и установка: [dsh-goal-vector/README.md](dsh-goal-vector/README.md).
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).

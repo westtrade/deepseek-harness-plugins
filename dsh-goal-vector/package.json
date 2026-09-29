@@ -1,0 +1,38 @@
+{
+  "name": "dsh-goal-vector",
+  "version": "0.1.0",
+  "description": "Goals vectors for DeepSeek Harness: named, priority-ordered goal lists a chat can adopt so the LLM follows them, with a management page and model-facing tools",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/store-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test:store": "node scripts/store-test.mjs",
+    "test:host": "node scripts/host-test.mjs",
+    "test:client": "node scripts/client-smoke.mjs"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "goals",
+    "vector",
+    "control"
+  ],
+  "license": "MIT"
+}
