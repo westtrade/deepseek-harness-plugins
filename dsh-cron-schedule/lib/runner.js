@@ -102,23 +102,69 @@ function agentOptionsFor(runtime, job) {
 }
 
 /**
- * Run one job now: create its chat and deliver the prompt.
+ * Deliver one run's prompt into an existing chat.
+ *
+ * `runtime.sessionController.prompt` is the same admission path the Web
+ * composer uses: it resolves the live agent, and for a chat that is no longer
+ * live it loads the stored session and resumes an agent on it first. That is
+ * what makes a recurring job able to keep writing into one chat across
+ * restarts rather than only while the chat happens to be open.
+ *
+ * The `signal` argument is mandatory on that method, and the request id makes a
+ * retry idempotent — a second delivery with the same id is ignored rather than
+ * duplicated into the transcript.
+ *
+ * @param runtime - resolved services.
+ * @param job - the stored job record.
+ * @param sessionId - the chat to write into.
+ * @param signal - optional caller cancellation.
+ */
+async function promptExistingChat(runtime, job, sessionId, signal) {
+	const controller = runtime.sessionController;
+	if (controller === undefined || typeof controller.prompt !== 'function') {
+		throw new Error('writing into an existing chat needs the session controller in this deployment');
+	}
+	await controller.prompt({
+		requestId: randomUUID(),
+		sessionId,
+		mode: 'queue',
+		content: [{ type: 'text', text: job.prompt }]
+	}, signal ?? new AbortController().signal);
+}
+
+/**
+ * Run one job now: deliver its prompt into the bound chat, or start a new one.
+ *
+ * A job with `alwaysNewChat` (or with no chat bound yet) creates a fresh chat
+ * in its workspace and, unless the box is ticked, reports that id back so the
+ * caller can remember it as the job's chat. Every later run writes into that
+ * same chat, which is what makes a recurring task accumulate one conversation
+ * instead of leaving a trail of one-shot sessions.
  *
  * The created agent is owned by the caller's plugin fiber (that is how
  * `runtime.agents.create` is traced), so a scheduled chat lives while the plugin
  * lives, exactly like a chat the GUI started.
  *
  * @param runtime - the resolved services (`agents`, `agentPresets`,
- *   `workspaceRegistry`, `agentDefaultModel`, `sessionTitle`, `logger`), captured
- *   inside the plugin's injection scope — a raw ctx cannot resolve services from
- *   a later timer or HTTP callback.
+ *   `workspaceRegistry`, `agentDefaultModel`, `sessionController`,
+ *   `sessionTitle`, `logger`), captured inside the plugin's injection scope — a
+ *   raw ctx cannot resolve services from a later timer or HTTP callback.
  * @param job - the stored job record.
- * @param options - `signal` (cancellation) and `now` (epoch ms, for the id).
- * @returns `{ sessionId, workspacePath }`.
+ * @param options - `signal` (cancellation), `now` (epoch ms, for the id), and
+ *   `requestedSessionId` (an explicit chat to bind for this run).
+ * @returns `{ sessionId, workspacePath, created, bindable }`.
  */
 export async function runJob(runtime, job, options = {}) {
 	const signal = options.signal;
 	const now = options.now ?? Date.now();
+	// A chat picked by the person (or already bound) wins over creating a new one.
+	const bound = options.requestedSessionId ?? job.sessionId;
+
+	if (bound !== undefined && job.alwaysNewChat !== true) {
+		await promptExistingChat(runtime, job, bound, signal);
+		return { sessionId: bound, workspacePath: job.workspacePath, created: false, bindable: false };
+	}
+
 	const workspace = await ensureWorkspace(runtime, job.workspacePath);
 	signal?.throwIfAborted();
 	const sessionId = `${SCHEDULED_SESSION_PREFIX}-${job.id.slice(0, 8)}-${now.toString(36)}`;
@@ -163,5 +209,7 @@ export async function runJob(runtime, job, options = {}) {
 		}
 		throw error;
 	}
-	return { sessionId, workspacePath: workspace.path };
+	// `bindable` tells the caller to remember this chat for the job — but not
+	// when the box is ticked, since that job wants a fresh chat every time.
+	return { sessionId, workspacePath: workspace.path, created: true, bindable: job.alwaysNewChat !== true };
 }

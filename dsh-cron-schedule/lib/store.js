@@ -68,6 +68,25 @@ function requireText(value, field, maxLength) {
 }
 
 /**
+ * Validate one chat reference.
+ *
+ * @param value - a session id, or `null`/absent for "no chat bound yet".
+ * @param field - field name used in the error message.
+ * @returns the id, or undefined when none is bound.
+ */
+export function normalizeSessionId(value, field) {
+	if (value === undefined || value === null || value === '') return undefined;
+	if (typeof value !== 'string') throw new JobInputError(`${field} must be a session id`, field);
+	const trimmed = value.trim();
+	if (trimmed === '') return undefined;
+	// The harness mints ids as `session-…`; anything else would be a chat that
+	// cannot exist, so it is rejected here rather than at run time.
+	if (!trimmed.startsWith('session-')) throw new JobInputError(`${field} must name an existing chat (a "session-…" id)`, field);
+	if (trimmed.length > 200) throw new JobInputError(`${field} is too long`, field);
+	return trimmed;
+}
+
+/**
  * Validate one model choice against the deployment's allow-list.
  *
  * The list is the person's policy: when it is non-empty, a job may only name a
@@ -175,6 +194,24 @@ export function normalizeJob(input, base, now, allowed, available) {
 	 * record so the scheduler can act on it after a restart.
 	 */
 	const autoCatchUp = base?.autoCatchUp ?? false;
+	/**
+	 * Whether every run starts a brand-new chat instead of reusing one.
+	 *
+	 * A recurring job with no chat yet creates one on its first run and then
+	 * keeps writing into it, so the task accumulates history instead of leaving a
+	 * trail of one-shot sessions. Ticking this box always starts fresh.
+	 */
+	const alwaysNewChat = typeof source.alwaysNewChat === 'boolean' ? source.alwaysNewChat : base?.alwaysNewChat ?? false;
+	/**
+	 * The chat this job writes into.
+	 *
+	 * A runnable chat is either one the job created earlier (recorded on its
+	 * first run) or one the person picked. Cleared when `alwaysNewChat` is on, so
+	 * turning the box back off binds a fresh chat on the next run.
+	 */
+	const sessionId = alwaysNewChat
+		? undefined
+		: normalizeSessionId(source.sessionId === undefined ? base?.sessionId : source.sessionId, 'sessionId');
 	// Reject an expression that can never fire (e.g. `0 0 31 2 *`): saving one
 	// would produce a job the scheduler can only ever skip.
 	if (nextOccurrence(parseCron(expression), now, timeZone) === undefined) {
@@ -187,6 +224,8 @@ export function normalizeJob(input, base, now, allowed, available) {
 		timeZone,
 		workspacePath,
 		prompt,
+		alwaysNewChat,
+		...(sessionId === undefined ? {} : { sessionId }),
 		enabled,
 		autoCatchUp,
 		...(model === undefined ? {} : { model }),
@@ -241,6 +280,8 @@ export function jobView(job, locale = 'ru', now = Date.now()) {
 		prompt: job.prompt,
 		enabled: job.enabled,
 		autoCatchUp: job.autoCatchUp === true,
+		alwaysNewChat: job.alwaysNewChat === true,
+		sessionId: job.sessionId ?? null,
 		model: job.model === undefined || job.model === null ? null : { provider: job.model.provider, model: job.model.model },
 		createdAt: job.createdAt,
 		updatedAt: job.updatedAt,
@@ -283,6 +324,8 @@ function reviveJob(raw) {
 		prompt: raw.prompt,
 		enabled: raw.enabled !== false,
 		autoCatchUp: raw.autoCatchUp === true,
+		alwaysNewChat: raw.alwaysNewChat === true,
+		...(typeof raw.sessionId === 'string' && raw.sessionId.startsWith('session-') ? { sessionId: raw.sessionId } : {}),
 		...(raw.model !== null && typeof raw.model === 'object' && typeof raw.model.provider === 'string' && typeof raw.model.model === 'string'
 			? { model: { provider: raw.model.provider, model: raw.model.model } }
 			: {}),

@@ -39,6 +39,8 @@ function fakeContext() {
 	const logs = [];
 	/** Set by seal(): after apply() settles, raw-ctx service reads throw. */
 	let sealed = false;
+	/** Deliveries into an existing chat, recorded so tests can assert reuse. */
+	const prompts = [];
 	/** The agents service, held by identity so the fake never reads itself off ctx. */
 	const agentsService = {
 		/** When set, every agent creation fails — used to test run failure. */
@@ -147,6 +149,30 @@ function fakeContext() {
 		 * The fake mirrors that contract so the human-only `autoCatchUp` rule is
 		 * exercised for real instead of being assumed.
 		 */
+		sessionController: {
+			async prompt(request, signal) {
+				signal?.throwIfAborted();
+				prompts.push(request);
+				return { accepted: true };
+			},
+			async list() {
+				return [
+					{ sessionId: 'session-alpha', cwd: '/tmp/alpha', updatedAt: 300, running: false },
+					// Carries a cached projection, so the log path is skipped.
+					{ sessionId: 'session-beta', cwd: '/tmp/beta', updatedAt: 200, running: true, projections: { values: { title: 'Beta chat' } } }
+				];
+			}
+		},
+		/** Titles are folded from each chat's own log; the fake returns one event. */
+		sessionQuery: {
+			async readSession(sessionId) {
+				return {
+					events: sessionId === 'session-alpha'
+						? [{ type: 'session/title', data: { title: 'Alpha chat' } }]
+						: []
+				};
+			}
+		},
 		/** The model catalog the plugin reads for its pickers and allow-list checks. */
 		llm: {
 			providers: [
@@ -206,6 +232,7 @@ function fakeContext() {
 		workspaces,
 		effects,
 		logs,
+		prompts,
 		seal: () => ctx.seal(),
 		/** Make every subsequent agent creation fail, or stop doing so. */
 		failRuns: (on) => {
@@ -267,8 +294,8 @@ try {
 	ok('jobs route registered', host.routes.has(`exact:/api/cron-schedule/jobs`), [...host.routes.keys()].join(' '));
 	ok('settings route registered', host.routes.has('exact:/api/cron-schedule/settings'), [...host.routes.keys()].join(' '));
 	ok('job prefix route registered', host.routes.has('prefix:/api/cron-schedule/jobs'));
-	ok('six AI tools registered', host.tools.size === 6, [...host.tools.keys()].join(','));
-	for (const toolName of ['cron_list', 'cron_create', 'cron_delete', 'cron_run', 'cron_models', 'cron_describe']) {
+	ok('seven AI tools registered', host.tools.size === 7, [...host.tools.keys()].join(','));
+	for (const toolName of ['cron_list', 'cron_create', 'cron_delete', 'cron_run', 'cron_chats', 'cron_models', 'cron_describe']) {
 		ok(`tool ${toolName} present`, host.tools.has(toolName));
 	}
 	ok('scheduler stop effect registered', host.effects.includes('cron-schedule: scheduler stop'));
@@ -485,13 +512,91 @@ try {
 	ok('run recorded lastSessionId', afterRun.body.job.lastSessionId === agent.options.sessionId);
 	ok('run advanced nextRunAt into the future', afterRun.body.job.nextRunAt > Date.now());
 
-	// --- a failing run is recorded, not thrown ---
+	// --- an explicit chat, and the "always new chat" switch ---
+	const boundJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'В указанный чат', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		sessionId: 'session-alpha'
+	}, { trusted: true });
+	ok('a job can be bound to an existing chat', boundJob.status === 201 && boundJob.body.job.sessionId === 'session-alpha', JSON.stringify(boundJob.body.job?.sessionId));
+	const promptsBefore = host.prompts.length;
+	const createdBefore = host.created.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(boundJob.body.job.id)}/run`);
+	ok('the bound chat received the prompt', host.prompts.length === promptsBefore + 1 && host.prompts.at(-1).sessionId === 'session-alpha', JSON.stringify(host.prompts.at(-1)?.sessionId));
+	ok('a bound job created no chat', host.created.length === createdBefore, `created=${host.created.length}`);
+	const badChat = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'x', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p', sessionId: 'not-a-session'
+	}, { trusted: true });
+	ok('a malformed chat id is refused', badChat.status === 400 && badChat.body.field === 'sessionId', `${badChat.status} ${JSON.stringify(badChat.body)}`);
+
+	// The switch: every run starts fresh, and any binding is cleared.
+	const alwaysNewJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Всегда новый', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		sessionId: 'session-alpha', alwaysNewChat: true
+	}, { trusted: true });
+	ok('always-new clears a supplied binding', alwaysNewJob.status === 201 && alwaysNewJob.body.job.sessionId === null, JSON.stringify(alwaysNewJob.body.job?.sessionId));
+	ok('always-new is persisted', alwaysNewJob.body.job.alwaysNewChat === true);
+	const createdBeforeNew = host.created.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(alwaysNewJob.body.job.id)}/run`);
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(alwaysNewJob.body.job.id)}/run`);
+	ok('two runs of an always-new job create two chats', host.created.length === createdBeforeNew + 2, `created=${host.created.length - createdBeforeNew}`);
+	const afterTwo = await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(alwaysNewJob.body.job.id)}`);
+	ok('an always-new job stays unbound', afterTwo.body.job.sessionId === null, String(afterTwo.body.job.sessionId));
+	// Turning the switch back off lets the next run bind a chat again.
+	const rebound = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(alwaysNewJob.body.job.id)}`, { alwaysNewChat: false }, { trusted: true });
+	ok('turning the switch off is allowed', rebound.status === 200 && rebound.body.job.alwaysNewChat === false);
+	const createdBeforeRebind = host.created.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(alwaysNewJob.body.job.id)}/run`);
+	const afterRebind = await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(alwaysNewJob.body.job.id)}`);
+	ok('after switching off, a run binds a chat again', host.created.length === createdBeforeRebind + 1 && typeof afterRebind.body.job.sessionId === 'string', String(afterRebind.body.job.sessionId));
+
+	// The AI may use the switch too, and sees it in its own views.
+	const aiNew = await host.tools.get('cron_create').execute({
+		name: 'ИИ всегда новый', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p', alwaysNewChat: true
+	}, { signal: new AbortController().signal });
+	ok('the AI can create an always-new job', aiNew.alwaysNewChat === true && aiNew.sessionId === undefined, JSON.stringify(aiNew));
+	const aiReuse = await host.tools.get('cron_create').execute({
+		name: 'ИИ продолжает чат', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p', sessionId: 'session-beta'
+	}, { signal: new AbortController().signal });
+	ok('the AI can bind an existing chat', aiReuse.sessionId === 'session-beta', JSON.stringify(aiReuse));
+	const aiBadChat = await host.tools.get('cron_create').execute({
+		name: 'ИИ плохой чат', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p', sessionId: 'nope'
+	}, { signal: new AbortController().signal }).then(() => undefined, (error) => error);
+	ok('the AI cannot pass a malformed chat id', aiBadChat instanceof Error, String(aiBadChat?.message ?? 'accepted'));
+	const listToolValue = await host.tools.get('cron_list').execute({}, { signal: new AbortController().signal });
+	ok('cron_list exposes the chat policy', listToolValue.jobs.every((entry) => typeof entry.alwaysNewChat === 'boolean'));
+	ok('an always-new job shows no sessionId in cron_list', listToolValue.jobs.find((entry) => entry.name === 'ИИ всегда новый')?.sessionId === undefined);
+	ok('a bound job shows its sessionId in cron_list', listToolValue.jobs.find((entry) => entry.name === 'ИИ продолжает чат')?.sessionId === 'session-beta');
+	// cron_chats lists what the model may target, with titles.
+	const chatsTool = await host.tools.get('cron_chats').execute({}, { signal: new AbortController().signal });
+	ok('cron_chats lists chats', chatsTool.chats.length === 2, JSON.stringify(chatsTool.chats));
+	ok('cron_chats reads a title from the log', chatsTool.chats.some((chat) => chat.sessionId === 'session-alpha' && chat.title === 'Alpha chat'), JSON.stringify(chatsTool.chats));
+	ok('cron_chats prefers the cached projection', chatsTool.chats.some((chat) => chat.sessionId === 'session-beta' && chat.title === 'Beta chat'), JSON.stringify(chatsTool.chats));
+
+	// --- a recurring job reuses the chat its first run created ---
+	ok('the first run bound its chat to the job', afterRun.body.job.sessionId === agent.options.sessionId, String(afterRun.body.job.sessionId));
+	ok('the first run created a chat for this job', host.created.some((entry) => entry.options.sessionId === agent.options.sessionId), String(host.created.length));
+	const second = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}/run`);
+	ok('a second run still answers 200', second.status === 200);
+	const createdBeforeSecond = host.created.length;
+	const promptsBeforeSecond = host.prompts.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}/run`);
+	ok('a second run created NO new chat', host.created.length === createdBeforeSecond, `created=${host.created.length - createdBeforeSecond}`);
+	ok('a second run posted into the bound chat', host.prompts.length === promptsBeforeSecond + 1 && host.prompts.at(-1).sessionId === agent.options.sessionId, JSON.stringify(host.prompts.at(-1)?.sessionId));
+	ok('the reused message carries the job prompt', host.prompts.at(-1)?.content?.[0]?.text === 'Собери утренний отчёт', JSON.stringify(host.prompts.at(-1)?.content));
+	ok('the binding survived the second run', (await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`)).body.job.sessionId === agent.options.sessionId);
+
+	// --- a failing run is recorded, not thrown (on the new-chat path) ---
+	const freshJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Падает', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p'
+	}, { trusted: true });
 	host.failRuns(true);
-	const failed = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}/run`);
+	const failed = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(freshJob.body.job.id)}/run`);
 	ok('failed run still answers 200', failed.status === 200, `got ${failed.status}`);
-	const afterFail = await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`);
+	const afterFail = await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(freshJob.body.job.id)}`);
 	ok('failure recorded', afterFail.body.job.lastStatus === 'failed' && afterFail.body.job.lastError.includes('provider exploded'), JSON.stringify(afterFail.body.job.lastError));
+	ok('a failed run binds no chat', afterFail.body.job.sessionId === null, String(afterFail.body.job.sessionId));
 	ok('failure logged', host.logs.some(([level, text]) => level === 'warn' && text.includes('provider exploded')));
+	host.failRuns(false);
 
 	// --- toggle enabled off, then on ---
 	const off = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`, { enabled: false });

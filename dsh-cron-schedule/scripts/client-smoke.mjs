@@ -161,6 +161,8 @@ for (const required of [
 	'form.save', 'form.saving', 'form.cancel',
 	'form.autoCatchUp', 'form.autoCatchUpHint', 'column.auto', 'column.autoOn', 'column.autoAsk',
 	'form.model', 'form.modelDefault', 'form.modelRestricted', 'column.model',
+	'form.chat', 'form.chatNew', 'form.chatPick', 'form.chatPickPlaceholder', 'form.chatBound', 'form.chatIgnored',
+	'form.alwaysNewChat', 'form.alwaysNewChatHint', 'column.chat', 'column.chatNew', 'column.chatUnbound',
 	'settings.allowedModels', 'settings.allowedModelsHint', 'settings.allowedModelsEmpty',
 	'settings.addModel', 'settings.addModelPlaceholder', 'settings.remove', 'settings.save',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
@@ -206,6 +208,19 @@ ok('settings row registered on the General page', source.includes('settings.gene
 ok('settings row saves the list', source.includes('{ allowedModels: rows }'));
 ok('settings row can add and remove entries', source.includes('settings.addModel') && source.includes('settings.remove'));
 ok('table shows the model column', source.includes('column.model'));
+
+// --- chat reuse and the "always new chat" switch ---
+ok('form has a chat dropdown', source.includes('t("form.chatPick")') && source.includes('chats,'));
+ok('chat dropdown offers "create one for me"', source.includes('t("form.chatNew")'));
+ok('chat dropdown disables while always-new is on', source.includes('disabled: draft.alwaysNewChat === true'));
+ok('form has the always-new-chat checkbox', source.includes('t("form.alwaysNewChat")'));
+ok('checkbox bound to the draft flag', source.includes('alwaysNewChat: event.target.checked'));
+ok('always-new is off by default', source.includes('alwaysNewChat: false'));
+ok('editor pre-fills both chat fields', source.includes('alwaysNewChat: job.alwaysNewChat === true') && source.includes('sessionId: job.sessionId ?? ""'));
+ok('panel sends the chat policy', source.includes('alwaysNewChat: draft.alwaysNewChat === true'));
+ok('an empty pick sends null so the run binds a chat', source.includes('draft.sessionId === "" ? null : draft.sessionId'));
+ok('panel loads the chat list', source.includes('CHATS_URL') && source.includes('loadChats'));
+ok('table shows the chat column', source.includes('column.chat'));
 
 // --- editing an existing schedule ---
 ok('panel has an edit button per row', source.includes('t("job.edit")'));

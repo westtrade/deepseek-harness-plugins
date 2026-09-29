@@ -41,13 +41,16 @@ export const name = 'cron-schedule';
  * so the human-only `autoCatchUp` flag can be attributed to a real browser
  * session (see {@link makeTrustCheck}).
  */
-export const inject = ['webServer', 'connection', 'llm', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle'];
+export const inject = ['webServer', 'connection', 'llm', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle', 'sessionController', 'sessionQuery'];
 
 /** Exact route answering the job list and accepting mutations. */
 export const JOBS_PATH = '/api/cron-schedule/jobs';
 
 /** Exact route for the plugin settings (currently the model allow-list). */
 export const SETTINGS_PATH = '/api/cron-schedule/settings';
+
+/** Exact route listing the chats a job may be bound to. */
+export const CHATS_PATH = '/api/cron-schedule/chats';
 
 /**
  * Prefix under which one job is addressed (`/api/cron-schedule/jobs/<id>`).
@@ -117,6 +120,12 @@ export async function apply(ctx, config = {}) {
 		workspaceRegistry: ctx.workspaceRegistry,
 		agentPresets: ctx.agentPresets,
 		sessionTitle: ctx.sessionTitle,
+		// Delivers a run into an already-existing chat, resuming a cold session
+		// first when needed — the same admission path the Web composer uses.
+		sessionController: ctx.sessionController,
+		// Reads each chat's own log so the dropdown shows real titles, including
+		// for stored-but-closed chats that have no live session object.
+		sessionQuery: ctx.sessionQuery,
 		// The model catalog, for the panel's model pickers and for validating the
 		// allow-list against models this deployment can really route.
 		llm: ctx.llm,
@@ -283,8 +292,10 @@ export async function apply(ctx, config = {}) {
 			workspacePath: base.workspacePath,
 			prompt: base.prompt,
 			enabled: base.enabled,
+			alwaysNewChat: base.alwaysNewChat === true,
 			overdue: base.overdue,
 			missed: base.missed,
+			...(base.sessionId === null ? {} : { sessionId: base.sessionId }),
 			...(base.nextRunAt === null ? {} : { nextRunAt: base.nextRunAt }),
 			...(base.lastStatus === null ? {} : { lastStatus: base.lastStatus }),
 			...(base.lastSessionId === null ? {} : { lastSessionId: base.lastSessionId }),
@@ -443,6 +454,132 @@ export async function apply(ctx, config = {}) {
 		}
 	};
 
+	/**
+	 * The chat list the panel's "existing chat" dropdown offers.
+	 *
+	 * Read through `sessionController.list()`, which returns every attached and
+	 * persisted session without activating an agent. Titles come from the
+	 * `title` projection, so the dropdown shows the same names as the sidebar;
+	 * a session that has no title yet falls back to its working directory.
+	 */
+	/**
+	 * The title of one session, folded from its own log.
+	 *
+	 * The `session/title` event is the source of truth (the same fold the harness
+	 * uses for the sidebar), so this reads the log through `sessionQuery` rather
+	 * than a projection cell — which needs a live session object and would leave
+	 * every stored-but-closed chat untitled.
+	 *
+	 * @param sessionId - the session to look up.
+	 * @returns the title, or undefined when the chat has none yet.
+	 */
+	/**
+	 * Title cache: a session's title is stable once set, and reading a log is the
+	 * expensive part, so the first answer is kept and reused. Entries without a
+	 * title are cached too, but expire quickly, because the harness generates one
+	 * from the first messages shortly after a chat starts.
+	 */
+	const titleCache = new Map();
+	const TITLE_MISS_TTL_MS = 30000;
+
+	async function titleOf(sessionId) {
+		const cached = titleCache.get(sessionId);
+		if (cached !== undefined && (cached.title !== undefined || Date.now() - cached.at < TITLE_MISS_TTL_MS)) {
+			return cached.title;
+		}
+		const query = runtime.sessionQuery;
+		if (query === undefined || typeof query.readSession !== 'function') return undefined;
+		try {
+			const record = await query.readSession(sessionId);
+			const events = Array.isArray(record?.events) ? record.events : [];
+			for (let index = events.length - 1; index >= 0; index -= 1) {
+				const event = events[index];
+				if (event?.type !== 'session/title') continue;
+				const title = event.data?.title;
+				if (typeof title === 'string' && title.trim() !== '') {
+					titleCache.set(sessionId, { at: Date.now(), title });
+					return title;
+				}
+			}
+		} catch (error) {
+			ctx.logger.warn(`cron-schedule: could not read the title of "${sessionId}": ${String(error?.message ?? error)}`);
+		}
+		titleCache.set(sessionId, { at: Date.now(), title: undefined });
+		return undefined;
+	}
+
+	/**
+	 * The chat list a run may be bound to, newest activity first.
+	 *
+	 * Cost matters here: a deployment can hold hundreds of stored sessions, and
+	 * folding every log to find a title took ten seconds. So titles come from the
+	 * `list()` projection when it carries one, and the log is read only for the
+	 * small page actually returned.
+	 *
+	 * @param limit - how many chats to return.
+	 * @returns the chat rows, newest first.
+	 */
+	async function listChats(limit = 100) {
+		const controller = runtime.sessionController;
+		if (controller === undefined || typeof controller.list !== 'function') return [];
+		const raw = await controller.list();
+		// A remote-wrapped controller answers `{ ok, value }`; a direct service
+		// call answers the array. Accept both so the route is transport-agnostic.
+		const sessions = Array.isArray(raw) ? raw : (Array.isArray(raw?.value) ? raw.value : (Array.isArray(raw?.items) ? raw.items : []));
+		const ordered = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+		const page = Number.isFinite(limit) && limit > 0 ? ordered.slice(0, limit) : ordered;
+		const rows = new Array(page.length);
+		// Two passes: rows the cached projection can title are resolved at once,
+		// and only the rest read their log — with a small concurrency cap, because
+		// a burst of log reads is what made this route slow in the first place.
+		const pending = [];
+		page.forEach((entry, index) => {
+			const projected = entry.projections?.values?.title;
+			if (typeof projected === 'string' && projected.trim() !== '') {
+				rows[index] = { entry, title: projected };
+				return;
+			}
+			pending.push(index);
+		});
+		const CONCURRENCY = 8;
+		let cursor = 0;
+		const worker = async () => {
+			while (cursor < pending.length) {
+				const index = pending[cursor];
+				cursor += 1;
+				rows[index] = { entry: page[index], title: await titleOf(page[index].sessionId) };
+			}
+		};
+		await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, worker));
+		return rows.map(({ entry, title }) => ({
+			sessionId: entry.sessionId,
+			title: title ?? entry.cwd ?? entry.sessionId,
+			...(typeof entry.cwd === 'string' ? { cwd: entry.cwd } : {}),
+			updatedAt: entry.updatedAt
+		}));
+	}
+
+	const chatsHandler = async (req, res) => {
+		if (req.method !== 'GET' && req.method !== 'HEAD') {
+			res.writeHead(405, { allow: 'GET, HEAD' });
+			res.end();
+			return;
+		}
+		try {
+			// A dropdown does not need every stored session; the newest page is the
+			// useful set and keeps the answer fast.
+			sendJson(res, 200, { chats: await listChats(60) });
+		} catch (error) {
+			ctx.logger.error(error);
+			sendJson(res, 500, { error: String(error?.message ?? error) });
+		}
+	};
+
+	ctx.effect(() => ctx.webServer.register({
+		kind: 'exact',
+		path: CHATS_PATH,
+		handler: chatsHandler
+	}), 'cron-schedule: chats route');
 	ctx.effect(() => ctx.webServer.register({
 		kind: 'exact',
 		path: SETTINGS_PATH,
@@ -459,7 +596,7 @@ export async function apply(ctx, config = {}) {
 		handler: jobHandler
 	}), 'cron-schedule: job route');
 
-	registerTools(ctx, { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime });
+	registerTools(ctx, { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime, listChats });
 }
 
 /**
@@ -471,7 +608,7 @@ export async function apply(ctx, config = {}) {
  * @param deps - store, scheduler, locale, and the view helper.
  */
 function registerTools(ctx, deps) {
-	const { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime } = deps;
+	const { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime, listChats } = deps;
 	/** One text block. */
 	const text = (value) => [{ type: 'text', text: value }];
 	/** A tool definition in the shape the registry validates. */
@@ -561,11 +698,13 @@ function registerTools(ctx, deps) {
 						expression: { type: 'string', required: true },
 						workspacePath: { type: 'string', required: true },
 						nextRunAt: { type: 'number' },
+						alwaysNewChat: { type: 'boolean', required: true },
+						sessionId: { type: 'string' },
 						provider: { type: 'string' },
 						model: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}.`)
+				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
 			},
 			async execute(args, exec) {
 				const source = { ...args };
@@ -593,6 +732,8 @@ function registerTools(ctx, deps) {
 					expression: fresh.expression,
 					workspacePath: fresh.workspacePath,
 					nextRunAt: fresh.nextRunAt,
+					alwaysNewChat: fresh.alwaysNewChat === true,
+					...(fresh.sessionId === undefined ? {} : { sessionId: fresh.sessionId }),
 					...(fresh.model === undefined ? {} : { provider: fresh.model.provider, model: fresh.model.model })
 				};
 			}
@@ -644,6 +785,43 @@ function registerTools(ctx, deps) {
 				const id = String(args.id);
 				const started = await scheduler.runNow(id);
 				return { started, id };
+			}
+		}));
+
+		toolCtx.tools.register(tool({
+			name: 'cron_chats',
+			description: 'List existing chats a schedule can post into. Normally you do not need this: a repeating schedule with no chat creates one on its first run and continues it thereafter. Use this only to target a specific existing chat via cron_create sessionId, or to check which chat a schedule is bound to.',
+			parameters: {},
+			output: {
+				schema: {
+					type: 'object',
+					additionalProperties: false,
+					properties: {
+						chats: {
+							type: 'array',
+							required: true,
+							items: {
+								type: 'object',
+								additionalProperties: false,
+								properties: {
+									sessionId: { type: 'string', required: true },
+									title: { type: 'string', required: true },
+									cwd: { type: 'string' }
+								}
+							}
+						}
+					}
+				},
+				render: (_args, value) => text(value.chats.length === 0
+					? 'There are no existing chats to post into.'
+					: `Existing chats:\n${value.chats.map((chat) => `  ${chat.sessionId}  ${chat.title}${chat.cwd === undefined ? '' : `  (${chat.cwd})`}`).join('\n')}`)
+			},
+			async execute() {
+				return { chats: (await listChats(50)).map((chat) => ({
+					sessionId: chat.sessionId,
+					title: chat.title,
+					...(chat.cwd === undefined ? {} : { cwd: chat.cwd })
+				})) };
 			}
 		}));
 

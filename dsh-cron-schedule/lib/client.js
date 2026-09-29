@@ -16,6 +16,8 @@ window.__ModuleLoader__.load({
 		const JOBS_URL = "/api/cron-schedule/jobs";
 		/** Host route answering the plugin settings and the routable model catalog. */
 		const SETTINGS_URL = "/api/cron-schedule/settings";
+		/** Host route listing the chats a schedule can post into. */
+		const CHATS_URL = "/api/cron-schedule/chats";
 		/** Poll interval while the panel is open. */
 		const REFRESH_MS = 20000;
 		const en = {
@@ -51,6 +53,17 @@ window.__ModuleLoader__.load({
 			"form.cancel": "Cancel",
 			"form.preview": "Next runs: {list}",
 			"form.invalid": "Check the form: {message}",
+			"form.chat": "Chat",
+			"form.chatNew": "First run creates a chat, later runs continue it",
+			"form.chatPick": "Reuse an existing chat",
+			"form.chatPickPlaceholder": "— pick a chat —",
+			"form.chatBound": "Bound chat: {id}",
+			"form.chatIgnored": "Ignored while \"always new chat\" is on",
+			"form.alwaysNewChat": "Always start a new chat",
+			"form.alwaysNewChatHint": "On: every run starts a fresh chat. Off: the first run creates one and every later run continues it, so a recurring task builds one conversation.",
+			"column.chat": "Chat",
+			"column.chatNew": "new each run",
+			"column.chatUnbound": "not yet created",
 			"form.model": "Model",
 			"form.modelDefault": "Deployment default",
 			"form.modelRestricted": "Only models allowed in Settings can be picked",
@@ -123,6 +136,17 @@ window.__ModuleLoader__.load({
 			"form.cancel": "取消",
 			"form.preview": "接下来：{list}",
 			"form.invalid": "请检查表单：{message}",
+			"form.chat": "会话",
+			"form.chatNew": "首次运行创建会话，之后继续使用",
+			"form.chatPick": "复用已有会话",
+			"form.chatPickPlaceholder": "— 选择会话 —",
+			"form.chatBound": "已绑定会话：{id}",
+			"form.chatIgnored": "开启「每次新建会话」时忽略此项",
+			"form.alwaysNewChat": "每次运行都新建会话",
+			"form.alwaysNewChatHint": "开启：每次运行都创建新会话。关闭：首次运行创建会话，之后一直沿用，使重复任务形成一段连续对话。",
+			"column.chat": "会话",
+			"column.chatNew": "每次新建",
+			"column.chatUnbound": "尚未创建",
 			"form.model": "模型",
 			"form.modelDefault": "部署默认",
 			"form.modelRestricted": "只能选择在设置中允许的模型",
@@ -286,7 +310,7 @@ window.__ModuleLoader__.load({
 			return payload;
 		}
 		/** One row in the schedules table. */
-		function JobRow({ job, t, editing, onEdit, onChanged, onError }) {
+		function JobRow({ job, t, editing, chats, onEdit, onChanged, onError }) {
 			const [busy, setBusy] = react.useState(null);
 			const next = formatAt(job.nextRunAt, job.timeZone);
 			const last = formatAt(job.lastRunAt, job.timeZone);
@@ -345,6 +369,21 @@ window.__ModuleLoader__.load({
 					job.enabled !== true
 						? t("job.off")
 						: next === null ? t("job.never") : next),
+				el("td", {
+					style: {
+						padding: "8px 10px",
+						verticalAlign: "top",
+						fontSize: "12px",
+						color: job.alwaysNewChat === true || job.sessionId === null || job.sessionId === undefined
+							? "var(--dsw-alias-label-tertiary)"
+							: "var(--dsw-alias-label-secondary)",
+						wordBreak: "break-all"
+					}
+				}, job.alwaysNewChat === true
+					? t("column.chatNew")
+					: (job.sessionId === null || job.sessionId === undefined
+						? t("column.chatUnbound")
+						: (chats ?? []).find((chat) => chat.sessionId === job.sessionId)?.title ?? job.sessionId)),
 				el("td", {
 					style: {
 						padding: "8px 10px",
@@ -439,7 +478,7 @@ window.__ModuleLoader__.load({
 		* picker, the preset list, and the live next-run preview behave identically
 		* on both paths.
 		*/
-		function JobForm({ t, pickDirectory, workspaces, job, models, defaultModel, restricted, onDone, onCancel, onError }) {
+		function JobForm({ t, pickDirectory, workspaces, job, models, defaultModel, restricted, chats, onDone, onCancel, onError }) {
 			const editing = job !== undefined && job !== null;
 			/** `"provider\u0000model"` ↔ `""` for "use the deployment default". */
 			const modelKey = (entry) => (entry === undefined || entry === null ? "" : `${entry.provider}\u0000${entry.model}`);
@@ -454,6 +493,8 @@ window.__ModuleLoader__.load({
 					workspacePath: job.workspacePath,
 					prompt: job.prompt,
 					autoCatchUp: job.autoCatchUp === true,
+					alwaysNewChat: job.alwaysNewChat === true,
+					sessionId: job.sessionId ?? "",
 					modelKey: modelKey(job.model)
 				}
 				: {
@@ -465,6 +506,9 @@ window.__ModuleLoader__.load({
 					prompt: "",
 					// Off by default: a new schedule asks before replaying downtime.
 					autoCatchUp: false,
+					// Off by default: a repeating schedule reuses the chat it creates.
+					alwaysNewChat: false,
+					sessionId: "",
 					modelKey: ""
 				});
 			const [busy, setBusy] = react.useState(false);
@@ -518,6 +562,11 @@ window.__ModuleLoader__.load({
 						// caller that is not an authenticated browser session, so the
 						// panel is the one place it can be turned on.
 						autoCatchUp: draft.autoCatchUp === true,
+						// The chat policy: when "always new" is on the Host clears any
+						// binding; otherwise an explicit id binds that chat, and an
+						// empty value lets the first run create and remember one.
+						alwaysNewChat: draft.alwaysNewChat === true,
+						sessionId: draft.alwaysNewChat === true || draft.sessionId === "" ? null : draft.sessionId,
 						// `null` clears a stored choice, so the job follows the
 						// deployment default again.
 						model: draft.modelKey === "" ? null : (() => {
@@ -632,6 +681,39 @@ window.__ModuleLoader__.load({
 					style: { ...inputStyle, resize: "vertical", fontFamily: "inherit" },
 					onChange: (event) => set({ prompt: event.target.value })
 				})),
+				// Chat policy: reuse one chat across runs, or start fresh each time.
+				el("div", { style: { display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" } },
+					label(t("form.chatPick"), el("select", {
+						value: draft.sessionId,
+						disabled: draft.alwaysNewChat === true,
+						style: { ...inputStyle, minWidth: "280px", opacity: draft.alwaysNewChat === true ? 0.5 : 1 },
+						title: draft.alwaysNewChat === true ? t("form.chatIgnored") : undefined,
+						onChange: (event) => set({ sessionId: event.target.value })
+					},
+						el("option", { value: "" }, draft.sessionId === "" ? t("form.chatNew") : t("form.chatPickPlaceholder")),
+						// Keep a bound chat selectable even if it fell out of the list.
+						...(draft.sessionId === "" || (chats ?? []).some((chat) => chat.sessionId === draft.sessionId)
+							? []
+							: [el("option", { key: draft.sessionId, value: draft.sessionId }, fill(t("form.chatBound"), { id: draft.sessionId }))]),
+						(chats ?? []).map((chat) => el("option", {
+							key: chat.sessionId,
+							value: chat.sessionId
+						}, `${chat.title} — ${chat.sessionId}`))))),
+				el("label", {
+					style: { display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" },
+					title: t("form.alwaysNewChatHint")
+				},
+					el("input", {
+						type: "checkbox",
+						checked: draft.alwaysNewChat === true,
+						style: { marginTop: "2px", flex: "none", accentColor: "var(--dsw-alias-interactive-bg-primary)" },
+						onChange: (event) => set({ alwaysNewChat: event.target.checked })
+					}),
+					el("span", { style: { minWidth: 0 } },
+						el("span", { style: { display: "block", color: "var(--dsw-alias-label-secondary)", fontSize: "13px", lineHeight: "20px" } },
+							t("form.alwaysNewChat")),
+						el("span", { style: { display: "block", color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } },
+							t("form.alwaysNewChatHint")))),
 				// Human-only switch: the Host rejects this flag from any caller
 				// without an authenticated browser session, so it cannot be set by
 				// the AI, a script, or a curl.
@@ -664,6 +746,8 @@ window.__ModuleLoader__.load({
 			const [state, setState] = react.useState({ jobs: [], loading: true, error: null });
 			/** The model allow-list plus the routable catalog, from the host. */
 			const [settings, setSettings] = react.useState({ allowedModels: [], models: [], default: null, loaded: false });
+			/** The chats a job may be bound to, for the form's dropdown. */
+			const [chats, setChats] = react.useState([]);
 			const [notice, setNotice] = useNotice();
 			/** Id of the job whose editor is open, or null when none is. */
 			const [editingId, setEditingId] = react.useState(null);
@@ -674,6 +758,15 @@ window.__ModuleLoader__.load({
 					setState({ jobs: Array.isArray(payload?.jobs) ? payload.jobs : [], loading: false, error: null });
 				} catch (error) {
 					setState((current) => ({ ...current, loading: false, error: error.message }));
+				}
+			}, []);
+			const loadChats = react.useCallback(async () => {
+				try {
+					const payload = await callHost("GET", CHATS_URL);
+					setChats(Array.isArray(payload?.chats) ? payload.chats : []);
+				} catch {
+					// Without the list the picker still offers "create one for me".
+					setChats([]);
 				}
 			}, []);
 			const loadSettings = react.useCallback(async () => {
@@ -694,12 +787,14 @@ window.__ModuleLoader__.load({
 			react.useEffect(() => {
 				void load();
 				void loadSettings();
+				void loadChats();
 				const timer = setInterval(() => {
 					void load();
 					void loadSettings();
+					void loadChats();
 				}, REFRESH_MS);
 				return () => clearInterval(timer);
-			}, [load, loadSettings]);
+			}, [load, loadSettings, loadChats]);
 			// The job form offers exactly what the person allowed; an empty
 			// allow-list means "no restriction", so the whole catalog is offered.
 			const restricted = settings.allowedModels.length > 0;
@@ -749,7 +844,7 @@ window.__ModuleLoader__.load({
 								: el("div", { style: { border: "1px solid var(--dsw-alias-border-l4)", borderRadius: "12px", overflow: "hidden" } },
 									el("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: "13px" } },
 										el("thead", null, el("tr", { style: { background: "var(--dsw-alias-bg-elevated, transparent)" } },
-											[t("column.name"), t("column.when"), t("column.next"), t("column.model"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
+											[t("column.name"), t("column.when"), t("column.next"), t("column.chat"), t("column.model"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
 												key: heading,
 												style: {
 													textAlign: "left",
@@ -764,6 +859,7 @@ window.__ModuleLoader__.load({
 												key: job.id,
 												job,
 												t,
+												chats,
 												editing: job.id === editingId,
 												onEdit: (id) => setEditingId((current) => (current === id ? null : id)),
 												onChanged: load,
@@ -772,7 +868,7 @@ window.__ModuleLoader__.load({
 											if (job.id !== editingId) return [row];
 											// The editor renders in place, directly under its own row.
 											return [row, el("tr", { key: `${job.id}-editor` },
-												el("td", { colSpan: 7, style: { padding: "0 10px 12px" } },
+												el("td", { colSpan: 8, style: { padding: "0 10px 12px" } },
 													el(JobForm, {
 														t,
 														pickDirectory,
@@ -780,6 +876,7 @@ window.__ModuleLoader__.load({
 														models: modelChoices,
 														defaultModel: settings.default,
 														restricted,
+														chats,
 														job,
 														onDone: async (name) => {
 															setEditingId(null);
@@ -797,6 +894,7 @@ window.__ModuleLoader__.load({
 								models: modelChoices,
 								defaultModel: settings.default,
 								restricted,
+								chats,
 								onDone: async () => {
 									await load();
 									setNotice(null);

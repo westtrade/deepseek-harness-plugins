@@ -116,9 +116,14 @@ export function createScheduler(options) {
 				lastStatus: 'succeeded',
 				lastSessionId: result?.sessionId,
 				lastError: undefined,
+				// A job that just created its chat remembers it, so the next run
+				// continues the same conversation. A job with `alwaysNewChat`, or
+				// one that already had a chat, reports `bindable: false` and keeps
+				// whatever it had.
+				...(result?.bindable === true && typeof result.sessionId === 'string' ? { sessionId: result.sessionId } : {}),
 				runs: appendRun(current.runs, { at: now(), status: 'succeeded', sessionId: result?.sessionId })
 			}));
-			logger?.info?.(`cron-schedule: job "${job.name}" started session ${result?.sessionId ?? '(unknown)'}`);
+			logger?.info?.(`cron-schedule: job "${job.name}" ${result?.created === false ? 'posted into' : 'started'} session ${result?.sessionId ?? '(unknown)'}`);
 		} catch (error) {
 			const message = String(error?.message ?? error);
 			await store.update(id, (current) => ({
