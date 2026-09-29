@@ -105,6 +105,65 @@ window.__ModuleLoader__.load({
 			"composer.cleared": "Goals vector cleared",
 			"composer.failed": "Could not change the goals vector: {message}"
 		};
+		/**
+		* Russian dictionary.
+		*
+		* Russian is a language PACK (`ctx.locale.addLanguage`), not a built-in: the
+		* shell ships only `zh` and `en`. Registering it this way adds it to the
+		* Language picker in Settings, and its declared fallback to `en` means every
+		* OTHER plugin keeps working — a namespace with no `ru` entries falls through
+		* to English rather than showing raw keys.
+		*/
+		const ru = {
+			"panel.title": "Векторы целей",
+			"panel.subtitle": "Цели по приоритету, которым ИИ следует в работе над проектом",
+			"about.title": "Что такое вектор целей?",
+			"about.lead": "Вектор целей описывает идеальный режим функционирования объекта — один из множества объективно возможных. Здесь это список целей для ИИ, работающего в проекте.",
+			"about.goalTerm": "Цель —",
+			"about.goal": "конечный результат, которого стремимся достигнуть: идеал, материальная или духовная потребность, задача, параметр разрабатываемого изделия, план.",
+			"about.orderTerm": "Порядок —",
+			"about.order": "вектор строится по субъективному произволу как иерархически упорядоченное множество частных целей. Порядок в нём обратен порядку вынужденного отказа: на первом месте самая важная цель, на последнем — самая незначительная. Поэтому когда осуществить всю совокупность целей невозможно, отказываются в первую очередь от целей с меньшим приоритетом.",
+			"about.measureTerm": "Мера качества —",
+			"about.measure": "в пределах каждого качества должна быть определена хоть в каком-нибудь смысле мера качества (параметры). Благодаря этому векторы сопоставимы, и сложение с вычитанием обретают смысл.",
+			"about.summary": "Иными словами: вектор целей — это перечень того, чего желаем, с номерами, назначенными в порядке, обратном порядку вынужденного отказа от осуществления каждого из этих желаний.",
+			"about.exampleTitle": "Пример",
+			"about.example": "вектор выпуска релиза — 1. не сломать существующие тесты · 2. сохранить стиль проекта · 3. затронуть как можно меньше файлов",
+			"panel.loading": "Загрузка…",
+			"panel.error": "Служба векторов целей недоступна: {message}",
+			"panel.empty": "Векторов целей пока нет. Добавьте первый ниже.",
+			"panel.refresh": "Обновить",
+			"panel.count": "Векторов: {count}",
+			"form.name": "Название",
+			"form.namePlaceholder": "Выпуск релиза 2.0",
+			"form.description": "Заметка",
+			"form.descriptionPlaceholder": "Для чего этот вектор (необязательно)",
+			"form.goals": "Цели по приоритету",
+			"form.goalsHint": "Первая строка важнее всех. Меняйте порядок стрелками; от целей с меньшим приоритетом ИИ отказывается первыми.",
+			"form.goalPlaceholder": "Цель {index}",
+			"form.addGoal": "Добавить цель",
+			"form.removeGoal": "Удалить",
+			"form.moveUp": "Выше",
+			"form.moveDown": "Ниже",
+			"form.add": "Добавить вектор",
+			"form.adding": "Добавление…",
+			"form.save": "Сохранить",
+			"form.saving": "Сохранение…",
+			"form.cancel": "Отмена",
+			"form.invalid": "Проверьте форму: {message}",
+			"column.name": "Название",
+			"column.goals": "Цели",
+			"column.actions": "Действия",
+			"vector.edit": "Изменить",
+			"vector.delete": "Удалить",
+			"vector.updated": "Сохранено «{name}»",
+			"vector.deleted": "Удалено «{name}»",
+			"composer.label": "Вектор целей",
+			"composer.none": "Без вектора",
+			"composer.title": "По какому вектору целей должен работать ИИ в этом чате?",
+			"composer.saved": "Этот чат следует «{name}»",
+			"composer.cleared": "Вектор целей снят",
+			"composer.failed": "Не удалось сменить вектор целей: {message}"
+		};
 		const zh = {
 			"panel.title": "目标向量",
 			"panel.subtitle": "AI 在项目中工作时遵循的按优先级排列的目标清单",
@@ -605,7 +664,12 @@ window.__ModuleLoader__.load({
 					document.querySelector(`style[data-plugin-css=${JSON.stringify(STYLE_TAG)}]`)?.remove();
 				};
 			}, "goal-vector: composer styles");
-			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "goal-vector: dictionaries");
+			// Russian arrives as a language pack: the shell ships only zh and en, so
+			// adding it here also makes it selectable in Settings → Language. Its
+			// fallback is English, so every other plugin keeps working when Russian
+			// is active — their namespaces simply fall through to `en`.
+			ctx.effect(() => ctx.locale.addLanguage({ id: "ru", label: "Русский", fallback: "en" }), "goal-vector: russian language pack");
+			ctx.effect(() => ctx.locale.register(NS, { zh, en, ru }), "goal-vector: dictionaries");
 			// The same id links the sidebar row to the main panel: the sidebar passes
 			// this id to layout.selectPanel().
 			ctx.effect(() => ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({

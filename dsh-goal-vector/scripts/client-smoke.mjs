@@ -48,9 +48,14 @@ function fakeContext() {
 	const dictionaries = [];
 	const effects = [];
 	const injections = [];
+	const languages = [];
 	const ctx = {
 		locale: {
 			bind: () => (key) => key,
+			addLanguage: (input) => {
+				languages.push(input);
+				return () => {};
+			},
 			register: (ns, dicts) => {
 				dictionaries.push({ ns, dicts });
 				return () => {};
@@ -72,7 +77,7 @@ function fakeContext() {
 			return factory();
 		}
 	};
-	return { ctx, registrations, dictionaries, effects, injections };
+	return { ctx, registrations, dictionaries, effects, injections, languages };
 }
 
 const bundlePath = new URL('../lib/client.js', import.meta.url);
@@ -141,11 +146,23 @@ const dictionary = host.dictionaries.find((entry) => entry.ns === 'goalVector');
 ok('dictionaries are registered under the namespace', dictionary !== undefined);
 const enKeys = Object.keys(dictionary?.dicts.en ?? {});
 const zhKeys = Object.keys(dictionary?.dicts.zh ?? {});
-ok('both dictionaries have the same keys', enKeys.length === zhKeys.length && enKeys.every((key) => zhKeys.includes(key)), `${enKeys.length} en vs ${zhKeys.length} zh`);
-ok('both dictionaries are non-empty', enKeys.length > 20, String(enKeys.length));
+const ruKeys = Object.keys(dictionary?.dicts.ru ?? {});
+ok('all three dictionaries have the same keys',
+	enKeys.length === zhKeys.length && zhKeys.length === ruKeys.length
+	&& enKeys.every((key) => zhKeys.includes(key) && ruKeys.includes(key)),
+	`${enKeys.length} en / ${zhKeys.length} zh / ${ruKeys.length} ru`);
+ok('every dictionary is non-empty', enKeys.length > 20, String(enKeys.length));
 for (const key of ['panel.title', 'form.name', 'form.goals', 'column.actions', 'composer.label', 'composer.none']) {
-	ok(`the "${key}" copy exists in both languages`, enKeys.includes(key) && zhKeys.includes(key), key);
+	ok(`the "${key}" copy exists in all three languages`, enKeys.includes(key) && zhKeys.includes(key) && ruKeys.includes(key), key);
 }
+
+// --- Russian as a language pack ---
+const pack = host.languages.find((entry) => entry.id === 'ru');
+ok('Russian is registered as a language pack', pack !== undefined, JSON.stringify(host.languages));
+ok('the Russian pack declares a label', pack?.label === 'Русский', String(pack?.label));
+ok('the Russian pack falls back to English', pack?.fallback === 'en', String(pack?.fallback));
+ok('the Russian copy is actually Russian', (dictionary?.dicts.ru?.['composer.none'] ?? '').includes('Без вектора'), String(dictionary?.dicts.ru?.['composer.none']));
+ok('the Russian copy is not a copy of the English one', dictionary?.dicts.ru?.['panel.title'] !== dictionary?.dicts.en?.['panel.title'], String(dictionary?.dicts.ru?.['panel.title']));
 
 // --- source-level facts a headless smoke cannot render ---
 ok('the panel talks to the vectors route', source.includes('/api/goal-vector/vectors'));
@@ -170,6 +187,6 @@ console.log(`  module id : ${captured.id}`);
 console.log(`  inject    : ${exportsObject.inject.join(', ')}`);
 console.log(`  effects   : ${host.effects.join(' | ')}`);
 console.log(`  registered: ${host.registrations.map((entry) => `${entry.options.name} → ${String(entry.options.id ?? entry.options.key)}`).join(' | ')}`);
-console.log(`  copy keys : ${enKeys.length} en / ${zhKeys.length} zh`);
+console.log(`  copy keys : ${enKeys.length} en / ${zhKeys.length} zh / ${ruKeys.length} ru`);
 console.log(`\nclient: pass=${pass} fail=${fail}`);
 process.exit(fail === 0 ? 0 : 1);
