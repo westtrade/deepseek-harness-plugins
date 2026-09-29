@@ -180,6 +180,11 @@ ok('the page explains what a goals vector is', source.includes('function AboutVe
 ok('the explanation defines the term', source.includes('about.goal') && source.includes('about.lead'));
 ok('the explanation stresses the reverse drop order', source.includes('about.order') && source.includes('about.summary'));
 ok('the explanation keeps the measure-of-quality point', source.includes('about.measure'));
+ok('the explanation states the goals hold under ideal control', source.includes('about.order') && /errorless|безошибочного/.test(source));
+ok('the explanation notes a vector can change over time', source.includes('about.change') && source.includes('about.changeTerm'));
+ok('the explanation notes that priority order makes different vectors', source.includes('about.priorities') && source.includes('about.prioritiesTerm'));
+ok('the explanation covers defective vectors', source.includes('about.defects') && source.includes('about.defectsTerm'));
+ok('the summary keeps the figurative wording', /inventory of what we want|перечень того, чего желаем/.test(source));
 ok('the explanation is collapsible and open by default', source.includes('react.useState(true)') && source.includes('setOpen(!open)'));
 
 console.log('client wiring OK');
