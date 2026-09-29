@@ -31,6 +31,17 @@ const reactStub = {
 	useRef: (value) => ({ current: value })
 };
 
+/**
+ * The shell's UI primitives, as the loader hands them over: the bundle must
+ * build its composer control from these rather than from a hand-rolled widget.
+ */
+const primitivesStub = {
+	Menu: 'Menu',
+	IconChevronDownOutline14: 'IconChevronDownOutline14',
+	Tooltip: 'Tooltip',
+	RiskConfirmation: 'RiskConfirmation'
+};
+
 /** A fake client context recording every registration. */
 function fakeContext() {
 	const registrations = [];
@@ -76,30 +87,32 @@ globalThis.window = {
 	}
 };
 
-// Evaluate the bundle the way the browser does: CommonJS require for react only.
+// Evaluate the bundle the way the browser does: CommonJS require for the two
+// platform seeds it uses, and nothing else.
+const requireShim = (specifier) => {
+	if (specifier === 'react') return reactStub;
+	if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return primitivesStub;
+	throw new Error(`unexpected require(${specifier})`);
+};
 const factory = new Function('require', 'window', 'module', 'exports', source);
 const moduleShim = { exports: {} };
-factory(
-	(specifier) => {
-		if (specifier === 'react') return reactStub;
-		throw new Error(`unexpected require(${specifier})`);
-	},
-	globalThis.window,
-	moduleShim,
-	moduleShim.exports
-);
+factory(requireShim, globalThis.window, moduleShim, moduleShim.exports);
 
 ok('bundle registered itself', captured !== undefined);
 ok('module id matches the package', captured?.id === 'dsh-goal-vector', captured?.id);
 
 const host = fakeContext();
-const exportsObject = captured.factory((specifier) => {
-	if (specifier === 'react') return reactStub;
-	throw new Error(`unexpected require(${specifier})`);
-});
+const exportsObject = captured.factory(requireShim);
 ok('bundle exports apply', typeof exportsObject.apply === 'function');
 ok('bundle exports inject', Array.isArray(exportsObject.inject));
 ok('the bundle only needs slots and locale', JSON.stringify(exportsObject.inject) === JSON.stringify(['slots', 'locale']), JSON.stringify(exportsObject.inject));
+ok('the bundle reuses the shell UI primitives', source.includes('@deepseek-ai/dsh-client-ui-primitives'), 'the composer control must be the shipped widget, not a lookalike');
+ok('the composer control is built from the shipped Menu', source.includes('el(primitives.Menu') || source.includes('primitives.Menu,'));
+ok('the composer control uses the shipped chevron', source.includes('primitives.IconChevronDownOutline14'));
+ok('the composer control is no longer a native select', !source.includes('el("select"'));
+ok('the composer trigger has a scoped stylesheet', source.includes('dsh-goal-vector/composer.css') && source.includes('dshgv_trigger'));
+ok('the trigger style matches the shipped permission control', source.includes('border-radius:24px') && source.includes('height:28px'));
+ok('the stylesheet is injected as a plugin style tag', source.includes('tag.dataset.pluginCss = STYLE_TAG') && source.includes('tag.dataset.plugin = "dsh-goal-vector"'));
 
 exportsObject.apply(host.ctx);
 

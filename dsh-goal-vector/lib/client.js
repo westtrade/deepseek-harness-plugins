@@ -5,6 +5,11 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
+		// The composer controls are built from the shell's own primitives, so the
+		// goals-vector picker is the same widget as the shipped "Workspace Write"
+		// control rather than a lookalike. These are platform seed modules: they
+		// resolve through the loader's require without a package dependency.
+		const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region lib/types/client/index.js
 		/** This package's copy namespace. */
 		const NS = "goalVector";
@@ -18,6 +23,38 @@ window.__ModuleLoader__.load({
 		const SELECTION_URL = "/api/goal-vector/selection";
 		/** Poll interval while the page is open. */
 		const REFRESH_MS = 20000;
+		/**
+		* Class hook names for the composer trigger.
+		*
+		* Mirrors the shape of the shipped control: a pill-shaped button carrying a
+		* label and a chevron. Attribute-free classes are safe here because every
+		* rule is scoped under our own style tag.
+		*/
+		const GOAL_VECTOR_CLASS = {
+			trigger: "dshgv_trigger",
+			triggerLabel: "dshgv_triggerLabel",
+			chevron: "dshgv_chevron",
+			chevronOpen: "dshgv_chevronOpen"
+		};
+		/**
+		* Composer trigger CSS, copied from the shipped `PermissionSelect` styles so
+		* the two controls sit in the tool row with identical metrics (28px tall,
+		* 13px/500 label, 24px radius, same hover and chevron behaviour).
+		*/
+		const GOAL_VECTOR_CSS = ".dshgv_trigger{min-width:0;max-width:220px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.dshgv_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.dshgv_trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}.dshgv_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.dshgv_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.dshgv_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s;display:inline-flex}.dshgv_chevronOpen{transform:rotate(180deg)}";
+		/** Style-tag identity, mirroring the loader's `data-plugin-css` convention. */
+		const STYLE_TAG = "dsh-goal-vector/composer.css";
+		/** Inject the composer stylesheet once per document. */
+		function ensureComposerStyle() {
+			if (typeof document === "undefined") return;
+			const selector = `style[data-plugin-css=${JSON.stringify(STYLE_TAG)}]`;
+			if (document.querySelector(selector) !== null) return;
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "dsh-goal-vector";
+			tag.dataset.pluginCss = STYLE_TAG;
+			tag.textContent = GOAL_VECTOR_CSS;
+			document.head.appendChild(tag);
+		}
 		const en = {
 			"panel.title": "Goals vectors",
 			"panel.subtitle": "A goals vector is a priority-ordered list of goals for the AI: goal 1 matters most, and the lowest-priority goals are the ones to drop first",
@@ -395,6 +432,7 @@ window.__ModuleLoader__.load({
 		function GoalVectorSelect({ sessionId, t }) {
 			const [state, setState] = react.useState({ vectors: [], current: "", name: null });
 			const [busy, setBusy] = react.useState(false);
+			const [open, setOpen] = react.useState(false);
 			const [notice, setNotice] = useNotice();
 			const load = react.useCallback(async () => {
 				if (typeof sessionId !== "string" || sessionId === "") return;
@@ -417,8 +455,9 @@ window.__ModuleLoader__.load({
 				return () => clearInterval(timer);
 			}, [load]);
 			const current = state.current;
-			const choose = async (event) => {
-				const next = event.target.value;
+			const choose = async (next) => {
+				setOpen(false);
+				if (next === current) return;
 				setBusy(true);
 				// Show the pick immediately; the poll reconciles it with the Host.
 				setState((previous) => ({ ...previous, current: next, name: previous.vectors.find((vector) => vector.id === next)?.name ?? null }));
@@ -435,38 +474,43 @@ window.__ModuleLoader__.load({
 				}
 			};
 			// A vector deleted after being adopted vanishes from the list; keep the
-			// adopted id visible so the selector never lies about the current state.
+			// adopted id visible so the selector never picks an entry it cannot show.
 			const options = [...state.vectors];
 			if (current !== "" && !options.some((vector) => vector.id === current)) {
 				options.unshift({ id: current, name: state.name ?? current });
 			}
-			return el("div", { style: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0 } },
-				el("select", {
-					value: current,
-					disabled: busy,
-					title: notice ?? t("composer.title"),
+			const currentLabel = current === "" ? t("composer.none") : (options.find((vector) => vector.id === current)?.name ?? current);
+			const items = [
+				{ id: "", label: t("composer.none") },
+				...options.map((vector) => ({ id: vector.id, label: vector.name, ...(vector.description === undefined || vector.description === "" ? {} : { detail: vector.description }) }))
+			];
+			// The trigger mirrors the shipped "Workspace Write" control (same pill,
+			// same chevron, same `Menu` popup), so the composer tool row keeps one
+			// visual language instead of growing a native <select> beside it.
+			return el(primitives.Menu, {
+				open,
+				items,
+				selectedId: current,
+				onSelect: choose,
+				onClose: () => setOpen(false),
+				side: "top",
+				anchor: el("button", {
+					type: "button",
+					className: GOAL_VECTOR_CLASS.trigger,
 					"aria-label": t("composer.label"),
-					onChange: choose,
-					style: {
-						maxWidth: "200px",
-						height: "28px",
-						color: current === "" ? "var(--dsw-alias-label-tertiary, inherit)" : "var(--dsw-alias-state-business-primary, #3a6df0)",
-						whiteSpace: "nowrap",
-						cursor: busy ? "default" : "pointer",
-						appearance: "none",
-						backgroundColor: "transparent",
-						border: "none",
-						borderRadius: "8px",
-						outline: "none",
-						padding: "0 4px",
-						font: "inherit",
-						fontSize: "13px",
-						fontWeight: 500,
-						textOverflow: "ellipsis"
-					}
-				},
-					el("option", { value: "" }, t("composer.none")),
-					...options.map((vector) => el("option", { key: vector.id, value: vector.id }, vector.name))));
+					title: notice ?? t("composer.title"),
+					disabled: busy,
+					onClick: () => setOpen(!open),
+					children: [
+						el("span", { className: GOAL_VECTOR_CLASS.triggerLabel, children: currentLabel }),
+						el("span", {
+							className: `${GOAL_VECTOR_CLASS.chevron}${open ? ` ${GOAL_VECTOR_CLASS.chevronOpen}` : ""}`,
+							"aria-hidden": true,
+							children: el(primitives.IconChevronDownOutline14, {})
+						})
+					]
+				})
+			});
 		}
 		/**
 		* Client plugin body: the sidebar row, the management page, and the
@@ -475,6 +519,13 @@ window.__ModuleLoader__.load({
 		*/
 		function apply(ctx) {
 			const t = ctx.locale.bind(NS);
+			ensureComposerStyle();
+			ctx.effect(() => {
+				ensureComposerStyle();
+				return () => {
+					document.querySelector(`style[data-plugin-css=${JSON.stringify(STYLE_TAG)}]`)?.remove();
+				};
+			}, "goal-vector: composer styles");
 			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "goal-vector: dictionaries");
 			// The same id links the sidebar row to the main panel: the sidebar passes
 			// this id to layout.selectPanel().
