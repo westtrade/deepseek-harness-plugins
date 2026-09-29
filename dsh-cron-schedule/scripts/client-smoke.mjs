@@ -27,6 +27,13 @@ function ok(label, condition, extra = '') {
 	console.log('FAIL:', label, extra);
 }
 
+/** Stand-in for the harness's shared widgets, matching their export names. */
+const primitivesStub = {
+	Tag: (props) => ({ type: 'Tag', props, children: props.children }),
+	IconChevronDownOutline14: (props) => ({ type: 'IconChevronDownOutline14', props }),
+	Switch: (props) => ({ type: 'Switch', props }),
+	Button: (props) => ({ type: 'Button', props, children: props.children })
+};
 /** Minimal React stand-in: the bundle only calls createElement/useState/useEffect. */
 const reactStub = {
 	createElement: (type, props, ...children) => ({ type, props, children }),
@@ -94,6 +101,7 @@ const moduleShim = { exports: {} };
 factory(
 	(specifier) => {
 		if (specifier === 'react') return reactStub;
+		if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return primitivesStub;
 		throw new Error(`unexpected require(${specifier})`);
 	},
 	globalThis.window,
@@ -107,6 +115,7 @@ ok('module id matches the package', captured?.id === 'dsh-cron-schedule', captur
 const host = fakeContext();
 const exportsObject = captured.factory((specifier) => {
 	if (specifier === 'react') return reactStub;
+	if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return primitivesStub;
 	throw new Error(`unexpected require(${specifier})`);
 });
 ok('bundle exports apply', typeof exportsObject.apply === 'function');
@@ -166,7 +175,8 @@ for (const required of [
 	'form.chat', 'form.chatNew', 'form.chatPick', 'form.chatPickPlaceholder', 'form.chatBound', 'form.chatIgnored',
 	'form.alwaysNewChat', 'form.alwaysNewChatHint', 'column.chat', 'column.chatNew', 'column.chatUnbound',
 	'settings.allowedModels', 'settings.allowedModelsHint', 'settings.allowedModelsEmpty',
-	'settings.addModel', 'settings.addModelPlaceholder', 'settings.remove', 'settings.save',
+	'settings.save', 'settings.saving', 'settings.discard', 'settings.unsaved', 'settings.saveFailed',
+	'settings.expand', 'settings.collapse', 'settings.allowedModelsLegend',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
 	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable',
 	'missed.title', 'missed.hint', 'missed.run', 'missed.dismiss'
@@ -207,13 +217,21 @@ ok('editor pre-fills the stored model', source.includes('modelKey: modelKey(job.
 ok('panel loads the settings route', source.includes('SETTINGS_URL'));
 ok('panel filters choices by the allow-list', source.includes('restricted') && source.includes('settings.allowedModels.some'));
 ok('card lives on the Plugin Configuration tab', source.includes('settings.plugin.item') && !source.includes('settings.general.item'));
-ok('settings row saves the list', source.includes('{ allowedModels: rows }'));
-ok('settings row can add and remove entries', source.includes('settings.addModel') && source.includes('settings.remove'));
+ok('settings row saves the list', source.includes('allowedModels: (draft ?? []).map'));
+ok('settings row toggles entries', source.includes('onChange: () => toggle(keyOf(entry))'));
+// Two clicks can land before a re-render, so the draft update must be functional.
+ok('toggling derives from the latest draft', source.includes('setDraft((current) => {') && source.includes('const base = current ?? savedKeys;'));
+ok('the draft and the checkboxes share one representation', source.includes('setDraft(allowed.map((entry) => `${entry.provider}\\u0000${entry.model}`))'));
+ok('settings row matches the Subagent card shape', source.includes('primitives.Tag') && source.includes('primitives.IconChevronDownOutline14'));
+ok('settings row is a collapsible card', source.includes('"aria-expanded": state.open'));
+ok('settings row groups models by provider', source.includes('const groups = new Map()'));
+ok('settings row stages edits until Save', source.includes('const discard = () => {') && source.includes('settings.discard'));
+ok('settings row marks unsaved edits', source.includes('settings.unsaved'));
 ok('table shows the model column', source.includes('column.model'));
 // --- no stale "deployment default" label, and the card owns the list ---
 ok('the picker names the effective model, not a deployment default', source.includes('named === undefined ? fallback.model : named.name'));
 ok('the inherited model is marked in the table', source.includes('column.modelInherited'));
-ok('the card writes the allow-list', source.includes('{ allowedModels: rows }'));
+ok('the card writes the allow-list', source.includes('await callHost("POST", SETTINGS_URL'));
 ok('the card reads the host settings route', source.includes('SETTINGS_URL'));
 ok('the card keeps its own namespace constant', source.includes('const SETTINGS_NAMESPACE = "cron-schedule"'));
 

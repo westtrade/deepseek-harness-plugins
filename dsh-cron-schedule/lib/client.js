@@ -5,6 +5,9 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
+		// The harness's own widgets, so this card matches the shipped ones
+		// (the Subagent settings card uses exactly these).
+		const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region lib/types/client/index.js
 		/** This package's copy namespace. */
 		const NS = "cronSchedule";
@@ -35,7 +38,14 @@ window.__ModuleLoader__.load({
 			"settings.addModel": "Add model",
 			"settings.addModelPlaceholder": "— pick a model to allow —",
 			"settings.remove": "Remove",
-			"settings.save": "Save list",
+			"settings.save": "Save",
+			"settings.saving": "Saving…",
+			"settings.discard": "Discard",
+			"settings.unsaved": "Unsaved",
+			"settings.saveFailed": "Could not save the list.",
+			"settings.expand": "Expand",
+			"settings.collapse": "Collapse",
+			"settings.allowedModelsLegend": "Allowed models",
 			"form.name": "Name",
 			"form.namePlaceholder": "Morning report",
 			"form.preset": "When",
@@ -120,7 +130,14 @@ window.__ModuleLoader__.load({
 			"settings.addModel": "添加模型",
 			"settings.addModelPlaceholder": "— 选择要允许的模型 —",
 			"settings.remove": "移除",
-			"settings.save": "保存列表",
+			"settings.save": "保存",
+			"settings.saving": "保存中…",
+			"settings.discard": "放弃",
+			"settings.unsaved": "未保存",
+			"settings.saveFailed": "无法保存列表。",
+			"settings.expand": "展开",
+			"settings.collapse": "收起",
+			"settings.allowedModelsLegend": "允许的模型",
 			"form.name": "名称",
 			"form.namePlaceholder": "早间报告",
 			"form.preset": "时间",
@@ -1055,86 +1072,236 @@ window.__ModuleLoader__.load({
 		* anything but an authenticated browser session.
 		*/
 		function ModelAllowListRow({ t }) {
-			const [state, setState] = react.useState({ allowedModels: [], models: [], loading: true, saving: false });
-			const [notice, setNotice] = useNotice();
-			/** A copy of the allow-list that edits mutate locally before saving. */
+			/** Staged form state: the served catalog, the saved list, and the drafts. */
+			const [state, setState] = react.useState({ allowedModels: [], models: [], loading: true, saving: false, failed: false, open: false });
+			/**
+			 * Draft selection while the card holds unsaved edits, as an array of
+			 * `"provider\u0000model"` keys. Keys (not objects) are the single
+			 * representation the checkbox list, the dirty check and the save all
+			 * use, so the three can never disagree about what is selected.
+			 */
 			const [draft, setDraft] = react.useState(null);
-			/** `"provider\u0000model"` of the catalog entry picked in the dropdown. */
-			const [picker, setPicker] = react.useState("");
 			const load = react.useCallback(async () => {
 				try {
 					const payload = await callHost("GET", SETTINGS_URL);
 					const allowed = Array.isArray(payload?.allowedModels) ? payload.allowedModels : [];
-					setState({
+					setState((current) => ({
+						...current,
 						allowedModels: allowed,
 						models: Array.isArray(payload?.models) ? payload.models : [],
 						loading: false,
-						saving: false
-					});
-					setDraft(allowed.map((entry) => ({ ...entry })));
-				} catch (error) {
-					setState((current) => ({ ...current, loading: false }));
-					setNotice(error.message);
+						saving: false,
+						failed: false
+					}));
+					setDraft(allowed.map((entry) => `${entry.provider}\u0000${entry.model}`));
+				} catch {
+					setState((current) => ({ ...current, loading: false, failed: true }));
 				}
 			}, []);
 			react.useEffect(() => {
 				void load();
 			}, [load]);
-			const rows = draft ?? state.allowedModels;
 			const keyOf = (entry) => `${entry.provider}\u0000${entry.model}`;
-			const present = new Set(rows.map(keyOf));
-			const add = (key) => {
-				if (key === "") return;
-				const [provider, model] = key.split("\u0000");
-				if (present.has(key)) return;
-				setDraft([...rows, { provider, model }]);
-				setPicker("");
+			/** The saved selection as keys — the baseline the draft is compared to. */
+			const savedKeys = state.allowedModels.map(keyOf);
+			const selected = new Set(draft ?? savedKeys);
+			const dirty = draft !== null && (draft.length !== savedKeys.length || draft.some((key) => !savedKeys.includes(key)));
+			/**
+			 * Toggle one model in the draft.
+			 *
+			 * The update is functional because two checkboxes can be clicked before
+			 * React re-renders: deriving from the render-scope `selected` would make
+			 * the second click start from the stale set and drop the first change.
+			 */
+			const toggle = (key) => {
+				setDraft((current) => {
+					const base = current ?? savedKeys;
+					return base.includes(key) ? base.filter((entry) => entry !== key) : [...base, key];
+				});
 			};
-			const remove = (key) => setDraft(rows.filter((entry) => keyOf(entry) !== key));
 			const save = async () => {
 				setState((current) => ({ ...current, saving: true }));
 				try {
-					await callHost("POST", SETTINGS_URL, { allowedModels: rows });
+					await callHost("POST", SETTINGS_URL, {
+						allowedModels: (draft ?? []).map((key) => {
+							const [provider, model] = key.split("\u0000");
+							return { provider, model };
+						})
+					});
 					await load();
-					setNotice(null);
-				} catch (error) {
-					setState((current) => ({ ...current, saving: false }));
-					setNotice(error.message);
+					setState((current) => ({ ...current, open: false }));
+				} catch {
+					setState((current) => ({ ...current, saving: false, failed: true }));
 				}
 			};
-			const dirty = JSON.stringify(rows) !== JSON.stringify(state.allowedModels);
-			const nameOf = (entry) => state.models.find((model) => keyOf(model) === keyOf(entry))?.name ?? entry.model;
-			return el("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
-				el("div", { style: { color: "var(--dsw-alias-label-primary)", fontSize: "13px", lineHeight: "20px" } }, t("settings.allowedModels")),
-				el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } }, t("settings.allowedModelsHint")),
-				notice === null ? null : el("div", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: "12px" } }, notice),
-				state.loading
-					? el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" } }, t("panel.loading"))
-					: el("div", { style: { display: "flex", flexDirection: "column", gap: "6px" } },
-						rows.length === 0
-							? el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" } }, t("settings.allowedModelsEmpty"))
-							: el("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
-								rows.map((entry) => el("div", {
-									key: keyOf(entry),
-									style: { display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }
-								},
-									el("span", { style: { color: "var(--dsw-alias-label-secondary)", wordBreak: "break-all" } },
-										`${nameOf(entry)} — ${entry.provider}/${entry.model}`),
-									el("span", { style: { marginLeft: "auto" } },
-										button(t("settings.remove"), () => remove(keyOf(entry)), { compact: true }))))),
-						el("div", { style: { display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" } },
-							el("select", {
-								value: picker,
-								style: { ...inputStyle, maxWidth: "360px" },
-								onChange: (event) => setPicker(event.target.value)
-							},
-								el("option", { value: "" }, t("settings.addModelPlaceholder")),
-								state.models
-									.filter((entry) => !present.has(keyOf(entry)))
-									.map((entry) => el("option", { key: keyOf(entry), value: keyOf(entry) },
-										`${entry.name} — ${entry.provider}/${entry.model}`))),
-							button(t("settings.addModel"), () => add(picker), { compact: true, disabled: picker === "" }),
-							button(state.saving ? t("form.saving") : t("settings.save"), save, { compact: true, primary: true, disabled: state.saving || !dirty }))));
+			const discard = () => {
+				setDraft([...savedKeys]);
+				setState((current) => ({ ...current, failed: false }));
+			};
+			// Group the catalog by provider, exactly as the Subagent card does, so a
+			// long model list stays readable.
+			const groups = new Map();
+			for (const entry of state.models) {
+				const group = groups.get(entry.provider);
+				if (group === undefined) groups.set(entry.provider, { name: entry.providerName ?? entry.provider, entries: [entry] });
+				else group.entries.push(entry);
+			}
+			const renderModel = (entry) => el("label", {
+				key: keyOf(entry),
+				style: {
+					display: "grid",
+					gridTemplateColumns: "auto minmax(0, 1fr)",
+					alignItems: "center",
+					gap: "8px",
+					padding: "6px",
+					borderRadius: "6px",
+					cursor: "pointer"
+				}
+			},
+				el("input", {
+					type: "checkbox",
+					checked: selected.has(keyOf(entry)),
+					disabled: state.saving,
+					onChange: () => toggle(keyOf(entry))
+				}),
+				el("span", { style: { minWidth: 0 } },
+					el("span", {
+						style: {
+							display: "block",
+							color: "var(--dsw-alias-label-primary)",
+							fontSize: "13px",
+							lineHeight: "1.4",
+							overflow: "hidden",
+							textOverflow: "ellipsis",
+							whiteSpace: "nowrap"
+						}
+					}, entry.name),
+					el("span", {
+						style: {
+							display: "block",
+							color: "var(--dsw-alias-label-tertiary)",
+							fontSize: "11px",
+							lineHeight: "1.4",
+							marginTop: "2px",
+							overflow: "hidden",
+							textOverflow: "ellipsis",
+							whiteSpace: "nowrap"
+						}
+					}, `${entry.providerName ?? entry.provider} · ${entry.provider}/${entry.model}`)));
+			const blocked = !dirty || state.saving;
+			return el("li", {
+				style: {
+					border: "0.5px solid var(--dsw-alias-border-l4)",
+					background: state.open ? "var(--dsw-alias-bg-layer-2)" : "var(--dsw-alias-bg-layer-3)",
+					borderRadius: "16px",
+					listStyle: "none"
+				}
+			},
+				el("button", {
+					type: "button",
+					"aria-expanded": state.open,
+					"aria-label": `${t(state.open ? "settings.collapse" : "settings.expand")}: ${t("settings.allowedModels")}`,
+					onClick: () => setState((current) => ({ ...current, open: !current.open })),
+					style: {
+						appearance: "none",
+						width: "100%",
+						font: "inherit",
+						color: "inherit",
+						textAlign: "left",
+						cursor: "pointer",
+						background: "none",
+						border: 0,
+						borderRadius: "12px",
+						display: "flex",
+						alignItems: "center",
+						gap: "12px",
+						padding: "14px 16px"
+					}
+				},
+					el("span", { style: { display: "flex", flexDirection: "column", flex: 1, gap: "4px", minWidth: 0 } },
+						el("span", { style: { color: "var(--dsw-alias-label-primary)", fontSize: "15px", fontWeight: 600, lineHeight: 1.4 } },
+							t("settings.allowedModels")),
+						el("span", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "13px", lineHeight: 1.5 } },
+							t("settings.allowedModelsHint"))),
+					dirty ? el(primitives.Tag, { tone: "neutral" }, t("settings.unsaved")) : null,
+					el(primitives.IconChevronDownOutline14, {
+						style: { color: "var(--dsw-alias-label-tertiary)", flex: "none", transform: state.open ? "rotate(180deg)" : "none" }
+					})),
+				state.open ? el("div", {
+					style: { borderTop: "0.5px solid var(--dsw-alias-border-l2)", margin: "0 16px", paddingBottom: "8px" }
+				},
+					state.failed ? el("p", { role: "alert", style: { color: "var(--dsw-alias-label-error)", fontSize: "12px", margin: "12px 0 0" } },
+						t("settings.saveFailed")) : null,
+					state.loading
+						? el("p", { role: "status", style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px", margin: "12px 0 0" } }, t("panel.loading"))
+						: el("fieldset", {
+							style: {
+								border: "0.5px solid var(--dsw-alias-border-l4)",
+								borderRadius: "8px",
+								display: "grid",
+								gap: "6px",
+								maxHeight: "280px",
+								overflow: "auto",
+								margin: "12px 0 0",
+								padding: "10px",
+								minWidth: 0
+							}
+						},
+							el("legend", { style: { color: "var(--dsw-alias-label-secondary)", padding: "0 4px", fontSize: "12px" } },
+								t("settings.allowedModelsLegend")),
+							[...groups].map(([provider, group]) => el("div", { key: provider, style: { display: "grid", gap: "6px" } },
+								el("div", { style: { color: "var(--dsw-alias-label-tertiary)", padding: "0 6px", fontSize: "11px", fontWeight: 500 } },
+									group.name),
+								group.entries.map(renderModel))),
+							selected.size === 0
+								? el("p", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px", margin: "0" } }, t("settings.allowedModelsEmpty"))
+								: null),
+					el("div", {
+						style: {
+							borderTop: "0.5px solid var(--dsw-alias-border-l2)",
+							display: "flex",
+							justifyContent: "flex-end",
+							alignItems: "center",
+							gap: "8px",
+							padding: "12px 0 4px"
+						}
+					},
+						el("button", {
+							type: "button",
+							disabled: !dirty || state.saving,
+							onClick: discard,
+							style: {
+								appearance: "none",
+								font: "inherit",
+								cursor: "pointer",
+								border: "1px solid var(--dsw-alias-border-l2)",
+								borderRadius: "8px",
+								padding: "5px 14px",
+								fontSize: "13px",
+								lineHeight: 1.5,
+								background: "none",
+								color: "var(--dsw-alias-label-secondary)",
+								opacity: !dirty || state.saving ? 0.4 : 1
+							}
+						}, t("settings.discard")),
+						el("button", {
+							type: "button",
+							disabled: blocked,
+							onClick: save,
+							style: {
+								appearance: "none",
+								font: "inherit",
+								cursor: "pointer",
+								border: "1px solid transparent",
+								borderRadius: "8px",
+								padding: "5px 14px",
+								fontSize: "13px",
+								lineHeight: 1.5,
+								background: "var(--dsw-alias-label-primary)",
+								color: "var(--dsw-alias-bg-layer-3)",
+								opacity: blocked ? 0.4 : 1
+							}
+						}, t(state.saving ? "settings.saving" : "settings.save")))) : null);
 		}
 		/**
 		* Client plugin body: the sidebar row carrying the clock glyph and the main
