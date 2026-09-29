@@ -161,7 +161,11 @@ function fakeContext() {
 				return [
 					{ sessionId: 'session-alpha', cwd: '/tmp/alpha', updatedAt: 300, running: false },
 					// Carries a cached projection, so the log path is skipped.
-					{ sessionId: 'session-beta', cwd: '/tmp/beta', updatedAt: 200, running: true, projections: { values: { title: 'Beta chat' } } }
+					{ sessionId: 'session-beta', cwd: '/tmp/beta', updatedAt: 200, running: true, projections: { values: { title: 'Beta chat' } } },
+					// A subagent child: must never be offered for reuse.
+					{ sessionId: 'session-worker', cwd: '/tmp/alpha', updatedAt: 400, running: false, origin: 'subagent', parentSessionId: 'session-alpha' },
+					// A FORK: it has a parent but is an ordinary chat, so it stays.
+					{ sessionId: 'session-fork', cwd: '/tmp/alpha', updatedAt: 250, running: false, parentSessionId: 'session-alpha' }
 				];
 			}
 		},
@@ -574,20 +578,24 @@ try {
 	ok('cron_chats reads a title from the log', chatsTool.chats.some((chat) => chat.sessionId === 'session-alpha' && chat.title === 'Alpha chat'), JSON.stringify(chatsTool.chats));
 	ok('cron_chats lists chats', chatsTool.chats.length > 0, JSON.stringify(chatsTool.chats));
 	ok('cron_chats hides archived chats too', chatsTool.chats.every((chat) => chat.sessionId !== 'session-beta'), JSON.stringify(chatsTool.chats.map((chat) => chat.sessionId)));
+	ok('cron_chats hides subagent chats too', chatsTool.chats.every((chat) => chat.sessionId !== 'session-worker'), JSON.stringify(chatsTool.chats.map((chat) => chat.sessionId)));
 
 	// --- the chat route narrows to one workspace ---
 	const alphaOnly = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Falpha');
-	ok('the chat route filters by cwd', alphaOnly.status === 200 && alphaOnly.body.chats.length === 1 && alphaOnly.body.chats[0].sessionId === 'session-alpha', JSON.stringify(alphaOnly.body.chats));
+	ok('the chat route filters by cwd', alphaOnly.status === 200 && alphaOnly.body.chats.length === 2 && alphaOnly.body.chats.some((chat) => chat.sessionId === 'session-alpha'), JSON.stringify(alphaOnly.body.chats.map((chat) => chat.sessionId)));
 	const betaOnly = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Fbeta');
 	ok('a different folder yields no chats when its only chat is archived', betaOnly.body.chats.length === 0, JSON.stringify(betaOnly.body.chats));
 	const noMatch = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Fnowhere');
 	ok('an unknown folder yields no chats', noMatch.body.chats.length === 0, JSON.stringify(noMatch.body.chats));
 	const unfiltered = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats');
 	ok('archived chats are hidden', unfiltered.body.chats.every((chat) => chat.sessionId !== 'session-beta'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
+	ok('subagent chats are hidden', unfiltered.body.chats.every((chat) => chat.sessionId !== 'session-worker'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
+	ok('a forked chat is NOT hidden', unfiltered.body.chats.some((chat) => chat.sessionId === 'session-fork'), JSON.stringify(unfiltered.body.chats.map((chat) => chat.sessionId)));
 	ok('an archived chat is gone from a filtered view too', betaOnly.body.chats.length === 0, JSON.stringify(betaOnly.body.chats));
 	ok('unarchived chats survive', unfiltered.body.chats.some((chat) => chat.sessionId === 'session-alpha'));
 	// Two sessions exist, but one is archived, so only the unarchived one lists.
-	ok('no cwd parameter lists every unarchived chat', unfiltered.body.chats.length === 1, String(unfiltered.body.chats.length));
+	// Four sessions, minus the archived one and the subagent one.
+	ok('no cwd parameter lists every reusable chat', unfiltered.body.chats.length === 2, String(unfiltered.body.chats.length));
 	// Filtering happens before the page limit, so a workspace's chats cannot be
 	// pushed out of the answer by newer chats from other projects.
 	const limited = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Falpha');

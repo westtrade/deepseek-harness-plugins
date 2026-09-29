@@ -538,7 +538,7 @@ export async function apply(ctx, config = {}) {
 	 * @param cwd - when given, only chats created in that directory. Filtering
 	 *   happens BEFORE the page limit, so a workspace's chats can never be
 	 *   pushed out of the list by newer chats from other projects.
-	 * @returns the chat rows, newest first, without archived chats.
+	 * @returns the chat rows, newest first, without archived or subagent chats.
 	 */
 	async function listChats(limit = 100, cwd) {
 		const controller = runtime.sessionController;
@@ -550,7 +550,12 @@ export async function apply(ctx, config = {}) {
 		// Archived chats are hidden on purpose: the person put them away, so
 		// offering them for reuse would resurface exactly what they filed off.
 		const archived = new Set(archivedSessionIds());
-		const visible = sessions.filter((entry) => !archived.has(entry.sessionId));
+		// Subagent chats are hidden too: they belong to a parent run's delegation,
+		// so a schedule must never post into one. The test is `origin` alone —
+		// `parentSessionId` is NOT a proxy, because a forked chat also carries a
+		// parent and is an ordinary chat the person may well want to reuse.
+		const visible = sessions.filter((entry) => !archived.has(entry.sessionId)
+			&& entry.origin !== 'subagent');
 		const scoped = typeof cwd === 'string' && cwd !== ''
 			? visible.filter((entry) => entry.cwd === cwd)
 			: visible;
