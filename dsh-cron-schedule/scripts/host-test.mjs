@@ -324,6 +324,7 @@ try {
 	const jobsRoute = host.routes.get('exact:/api/cron-schedule/jobs');
 	const jobRoute = host.routes.get('prefix:/api/cron-schedule/jobs');
 	const settingsRoute = host.routes.get('exact:/api/cron-schedule/settings');
+	const chatsRoute = host.routes.get('exact:/api/cron-schedule/chats');
 
 	// --- empty list ---
 	const empty = await call(jobsRoute.handler, 'GET', '/api/cron-schedule/jobs');
@@ -571,6 +572,20 @@ try {
 	ok('cron_chats lists chats', chatsTool.chats.length === 2, JSON.stringify(chatsTool.chats));
 	ok('cron_chats reads a title from the log', chatsTool.chats.some((chat) => chat.sessionId === 'session-alpha' && chat.title === 'Alpha chat'), JSON.stringify(chatsTool.chats));
 	ok('cron_chats prefers the cached projection', chatsTool.chats.some((chat) => chat.sessionId === 'session-beta' && chat.title === 'Beta chat'), JSON.stringify(chatsTool.chats));
+
+	// --- the chat route narrows to one workspace ---
+	const alphaOnly = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Falpha');
+	ok('the chat route filters by cwd', alphaOnly.status === 200 && alphaOnly.body.chats.length === 1 && alphaOnly.body.chats[0].sessionId === 'session-alpha', JSON.stringify(alphaOnly.body.chats));
+	const betaOnly = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Fbeta');
+	ok('a different folder yields its own chat', betaOnly.body.chats.length === 1 && betaOnly.body.chats[0].sessionId === 'session-beta');
+	const noMatch = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Fnowhere');
+	ok('an unknown folder yields no chats', noMatch.body.chats.length === 0, JSON.stringify(noMatch.body.chats));
+	const unfiltered = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats');
+	ok('no cwd parameter lists every chat', unfiltered.body.chats.length === 2, String(unfiltered.body.chats.length));
+	// Filtering happens before the page limit, so a workspace's chats cannot be
+	// pushed out of the answer by newer chats from other projects.
+	const limited = await call(chatsRoute.handler, 'GET', '/api/cron-schedule/chats?cwd=%2Ftmp%2Falpha');
+	ok('filtering precedes the limit', limited.body.chats.every((chat) => chat.cwd === '/tmp/alpha'), JSON.stringify(limited.body.chats.map((chat) => chat.cwd)));
 
 	// --- a recurring job reuses the chat its first run created ---
 	ok('the first run bound its chat to the job', afterRun.body.job.sessionId === agent.options.sessionId, String(afterRun.body.job.sessionId));

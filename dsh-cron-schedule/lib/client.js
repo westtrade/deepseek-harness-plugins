@@ -480,6 +480,15 @@ window.__ModuleLoader__.load({
 		*/
 		function JobForm({ t, pickDirectory, workspaces, job, models, defaultModel, restricted, chats, onDone, onCancel, onError }) {
 			const editing = job !== undefined && job !== null;
+			/**
+			 * Chats offered for reuse, narrowed to the chosen folder.
+			 *
+			 * The list has to follow the folder field, so it is fetched here
+			 * rather than once by the panel: a chat belongs to the directory it
+			 * was created in, and offering chats from other projects would let a
+			 * schedule post into a conversation that has nothing to do with it.
+			 */
+			const [scopedChats, setScopedChats] = react.useState(null);
 			/** `"provider\u0000model"` ↔ `""` for "use the deployment default". */
 			const modelKey = (entry) => (entry === undefined || entry === null ? "" : `${entry.provider}\u0000${entry.model}`);
 			const [draft, setDraft] = react.useState(() => editing
@@ -514,6 +523,41 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = react.useState(false);
 			const [preview, setPreview] = react.useState(null);
 			const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
+			// Keep the reusable-chat list in step with the chosen folder. An empty
+			// folder means "no filter yet", so the panel's unfiltered list stands in
+			// until a directory is picked.
+			react.useEffect(() => {
+				const cwd = draft.workspacePath.trim();
+				if (cwd === "") {
+					setScopedChats(null);
+					return undefined;
+				}
+				let cancelled = false;
+				const timer = setTimeout(() => {
+					fetch(`${CHATS_URL}?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" })
+						.then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
+						.then((payload) => {
+							if (!cancelled) setScopedChats(Array.isArray(payload?.chats) ? payload.chats : []);
+						})
+						.catch(() => {
+							// On failure keep the unfiltered list rather than pretending
+							// the workspace has no chats at all.
+							if (!cancelled) setScopedChats(null);
+						});
+				}, 250);
+				return () => {
+					cancelled = true;
+					clearTimeout(timer);
+				};
+			}, [draft.workspacePath]);
+			// A chat from another folder must not stay selected once the folder
+			// changes, or the job would keep posting into the wrong conversation.
+			react.useEffect(() => {
+				if (scopedChats === null || draft.sessionId === "") return;
+				if (scopedChats.some((chat) => chat.sessionId === draft.sessionId)) return;
+				setDraft((current) => ({ ...current, sessionId: "" }));
+			}, [scopedChats, draft.sessionId]);
+			const reusableChats = scopedChats ?? chats ?? [];
 			// Preview the next runs whenever the expression settles, so a typo shows
 			// up before the schedule is saved.
 			react.useEffect(() => {
@@ -653,8 +697,12 @@ window.__ModuleLoader__.load({
 					: el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" } },
 						fill(t("form.preview"), { list: next })),
 				el("div", { style: { display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" } },
+					// Bound to the current directory so the control shows what is
+					// selected instead of snapping back to the placeholder. A path
+					// typed by hand simply has no matching option, which reads as
+					// the placeholder while the text field below keeps the value.
 					label(t("form.pickExisting"), el("select", {
-						value: "",
+						value: (workspaces ?? []).some((workspace) => workspace.path === draft.workspacePath) ? draft.workspacePath : "",
 						style: { ...inputStyle, minWidth: "220px" },
 						onChange: (event) => {
 							if (event.target.value !== "") set({ workspacePath: event.target.value });
@@ -692,10 +740,10 @@ window.__ModuleLoader__.load({
 					},
 						el("option", { value: "" }, draft.sessionId === "" ? t("form.chatNew") : t("form.chatPickPlaceholder")),
 						// Keep a bound chat selectable even if it fell out of the list.
-						...(draft.sessionId === "" || (chats ?? []).some((chat) => chat.sessionId === draft.sessionId)
+						...(draft.sessionId === "" || reusableChats.some((chat) => chat.sessionId === draft.sessionId)
 							? []
 							: [el("option", { key: draft.sessionId, value: draft.sessionId }, fill(t("form.chatBound"), { id: draft.sessionId }))]),
-						(chats ?? []).map((chat) => el("option", {
+						reusableChats.map((chat) => el("option", {
 							key: chat.sessionId,
 							value: chat.sessionId
 						}, `${chat.title} — ${chat.sessionId}`))))),

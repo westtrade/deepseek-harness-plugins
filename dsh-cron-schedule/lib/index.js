@@ -517,16 +517,22 @@ export async function apply(ctx, config = {}) {
 	 * small page actually returned.
 	 *
 	 * @param limit - how many chats to return.
+	 * @param cwd - when given, only chats created in that directory. Filtering
+	 *   happens BEFORE the page limit, so a workspace's chats can never be
+	 *   pushed out of the list by newer chats from other projects.
 	 * @returns the chat rows, newest first.
 	 */
-	async function listChats(limit = 100) {
+	async function listChats(limit = 100, cwd) {
 		const controller = runtime.sessionController;
 		if (controller === undefined || typeof controller.list !== 'function') return [];
 		const raw = await controller.list();
 		// A remote-wrapped controller answers `{ ok, value }`; a direct service
 		// call answers the array. Accept both so the route is transport-agnostic.
 		const sessions = Array.isArray(raw) ? raw : (Array.isArray(raw?.value) ? raw.value : (Array.isArray(raw?.items) ? raw.items : []));
-		const ordered = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+		const scoped = typeof cwd === 'string' && cwd !== ''
+			? sessions.filter((entry) => entry.cwd === cwd)
+			: sessions;
+		const ordered = [...scoped].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 		const page = Number.isFinite(limit) && limit > 0 ? ordered.slice(0, limit) : ordered;
 		const rows = new Array(page.length);
 		// Two passes: rows the cached projection can title are resolved at once,
@@ -567,8 +573,10 @@ export async function apply(ctx, config = {}) {
 		}
 		try {
 			// A dropdown does not need every stored session; the newest page is the
-			// useful set and keeps the answer fast.
-			sendJson(res, 200, { chats: await listChats(60) });
+			// useful set and keeps the answer fast. `?cwd=` narrows it to one
+			// workspace, which the form sends once a folder is chosen.
+			const cwd = new URL(req.url ?? '/', 'http://dsh.invalid').searchParams.get('cwd') ?? undefined;
+			sendJson(res, 200, { chats: await listChats(60, cwd) });
 		} catch (error) {
 			ctx.logger.error(error);
 			sendJson(res, 500, { error: String(error?.message ?? error) });

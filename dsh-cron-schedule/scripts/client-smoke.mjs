@@ -221,6 +221,13 @@ ok('panel sends the chat policy', source.includes('alwaysNewChat: draft.alwaysNe
 ok('an empty pick sends null so the run binds a chat', source.includes('draft.sessionId === "" ? null : draft.sessionId'));
 ok('panel loads the chat list', source.includes('CHATS_URL') && source.includes('loadChats'));
 ok('table shows the chat column', source.includes('column.chat'));
+// --- the folder select and the folder-scoped chat list ---
+ok('folder select reflects the current directory', source.includes('some((workspace) => workspace.path === draft.workspacePath) ? draft.workspacePath : ""'));
+ok('folder select no longer pins value to empty', !source.includes('value: "",\n\t\t\t\t\t\tstyle: { ...inputStyle, minWidth: "220px" }'));
+ok('chat list is re-fetched per folder', source.includes('CHATS_URL}?cwd=') && source.includes('encodeURIComponent(cwd)'));
+ok('chat list narrows to the chosen folder', source.includes('const reusableChats = scopedChats ?? chats ?? []'));
+ok('a chat outside the folder is unbound', source.includes('scopedChats.some((chat) => chat.sessionId === draft.sessionId)'));
+ok('a failed scope keeps the unfiltered list', source.includes('if (!cancelled) setScopedChats(null);'));
 
 // --- editing an existing schedule ---
 ok('panel has an edit button per row', source.includes('t("job.edit")'));
