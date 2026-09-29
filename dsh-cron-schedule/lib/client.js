@@ -57,6 +57,7 @@ window.__ModuleLoader__.load({
 			"form.chatNew": "First run creates a chat, later runs continue it",
 			"form.chatPick": "Reuse an existing chat",
 			"form.chatPickPlaceholder": "— pick a chat —",
+			"form.chatLoading": "Loading chats…",
 			"form.chatBound": "Bound chat: {id}",
 			"form.chatIgnored": "Ignored while \"always new chat\" is on",
 			"form.alwaysNewChat": "Always start a new chat",
@@ -140,6 +141,7 @@ window.__ModuleLoader__.load({
 			"form.chatNew": "首次运行创建会话，之后继续使用",
 			"form.chatPick": "复用已有会话",
 			"form.chatPickPlaceholder": "— 选择会话 —",
+			"form.chatLoading": "正在加载会话…",
 			"form.chatBound": "已绑定会话：{id}",
 			"form.chatIgnored": "开启「每次新建会话」时忽略此项",
 			"form.alwaysNewChat": "每次运行都新建会话",
@@ -238,6 +240,37 @@ window.__ModuleLoader__.load({
 			return el("label", { style: { display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 } },
 				el("span", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px", lineHeight: "16px" } }, text),
 				child);
+		}
+		/**
+		* A small rotating indicator for an in-flight fetch.
+		*
+		* Drawn as an SVG with its own `animateTransform` so it needs no stylesheet
+		* and no global keyframes — the bundle ships no CSS for this panel.
+		*
+		* @param props - `size` in pixels and an accessible `label`.
+		* @returns the spinner element.
+		*/
+		function Spinner({ size, label }) {
+			const dimension = typeof size === "number" ? size : 12;
+			return el("svg", {
+				width: dimension,
+				height: dimension,
+				viewBox: "0 0 16 16",
+				fill: "none",
+				role: "status",
+				"aria-label": label,
+				style: { display: "block", flex: "none" }
+			},
+				el("circle", { cx: "8", cy: "8", r: "6", stroke: "currentColor", strokeWidth: "2", opacity: "0.25" }),
+				el("path", { d: "M8 2a6 6 0 0 1 6 6", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round" },
+					el("animateTransform", {
+						attributeName: "transform",
+						type: "rotate",
+						from: "0 8 8",
+						to: "360 8 8",
+						dur: "0.8s",
+						repeatCount: "indefinite"
+					})));
 		}
 		/** Shared text input. */
 		const inputStyle = {
@@ -522,6 +555,14 @@ window.__ModuleLoader__.load({
 				});
 			const [busy, setBusy] = react.useState(false);
 			const [preview, setPreview] = react.useState(null);
+			/**
+			 * Whether the folder-scoped chat list is being fetched.
+			 *
+			 * Set immediately when the folder changes — not when the request is
+			 * sent — because the 250 ms debounce plus the round trip is exactly the
+			 * pause the spinner exists to explain.
+			 */
+			const [chatsLoading, setChatsLoading] = react.useState(false);
 			const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
 			// Keep the reusable-chat list in step with the chosen folder. An empty
 			// folder means "no filter yet", so the panel's unfiltered list stands in
@@ -530,9 +571,11 @@ window.__ModuleLoader__.load({
 				const cwd = draft.workspacePath.trim();
 				if (cwd === "") {
 					setScopedChats(null);
+					setChatsLoading(false);
 					return undefined;
 				}
 				let cancelled = false;
+				setChatsLoading(true);
 				const timer = setTimeout(() => {
 					fetch(`${CHATS_URL}?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" })
 						.then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
@@ -543,6 +586,9 @@ window.__ModuleLoader__.load({
 							// On failure keep the unfiltered list rather than pretending
 							// the workspace has no chats at all.
 							if (!cancelled) setScopedChats(null);
+						})
+						.finally(() => {
+							if (!cancelled) setChatsLoading(false);
 						});
 				}, 250);
 				return () => {
@@ -734,22 +780,40 @@ window.__ModuleLoader__.load({
 				})),
 				// Chat policy: reuse one chat across runs, or start fresh each time.
 				el("div", { style: { display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" } },
-					label(t("form.chatPick"), el("select", {
-						value: draft.sessionId,
-						disabled: draft.alwaysNewChat === true,
-						style: { ...inputStyle, minWidth: "280px", opacity: draft.alwaysNewChat === true ? 0.5 : 1 },
-						title: draft.alwaysNewChat === true ? t("form.chatIgnored") : undefined,
-						onChange: (event) => set({ sessionId: event.target.value })
-					},
-						el("option", { value: "" }, draft.sessionId === "" ? t("form.chatNew") : t("form.chatPickPlaceholder")),
-						// Keep a bound chat selectable even if it fell out of the list.
-						...(draft.sessionId === "" || reusableChats.some((chat) => chat.sessionId === draft.sessionId)
-							? []
-							: [el("option", { key: draft.sessionId, value: draft.sessionId }, fill(t("form.chatBound"), { id: draft.sessionId }))]),
-						reusableChats.map((chat) => el("option", {
-							key: chat.sessionId,
-							value: chat.sessionId
-						}, `${chat.title} — ${chat.sessionId}`))))),
+					// The label carries the spinner: switching folders refetches this
+					// list, and without a cue the dropdown just looks empty.
+					el("label", { style: { display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 } },
+						el("span", {
+							style: {
+								display: "flex",
+								alignItems: "center",
+								gap: "6px",
+								color: "var(--dsw-alias-label-tertiary)",
+								fontSize: "12px",
+								lineHeight: "16px"
+							}
+						},
+							el("span", null, t("form.chatPick")),
+							chatsLoading ? el(Spinner, { size: 12, label: t("form.chatLoading") }) : null,
+							chatsLoading
+								? el("span", { style: { color: "var(--dsw-alias-label-tertiary)" } }, t("form.chatLoading"))
+								: null),
+						el("select", {
+							value: draft.sessionId,
+							disabled: draft.alwaysNewChat === true,
+							style: { ...inputStyle, minWidth: "280px", opacity: draft.alwaysNewChat === true ? 0.5 : 1 },
+							title: draft.alwaysNewChat === true ? t("form.chatIgnored") : undefined,
+							onChange: (event) => set({ sessionId: event.target.value })
+						},
+							el("option", { value: "" }, draft.sessionId === "" ? t("form.chatNew") : t("form.chatPickPlaceholder")),
+							// Keep a bound chat selectable even if it fell out of the list.
+							...(draft.sessionId === "" || reusableChats.some((chat) => chat.sessionId === draft.sessionId)
+								? []
+								: [el("option", { key: draft.sessionId, value: draft.sessionId }, fill(t("form.chatBound"), { id: draft.sessionId }))]),
+							reusableChats.map((chat) => el("option", {
+								key: chat.sessionId,
+								value: chat.sessionId
+							}, `${chat.title} — ${chat.sessionId}`))))),
 				el("label", {
 					style: { display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" },
 					title: t("form.alwaysNewChatHint")

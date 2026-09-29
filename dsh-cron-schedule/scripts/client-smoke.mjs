@@ -230,6 +230,14 @@ ok('chat list is re-fetched per folder', source.includes('CHATS_URL}?cwd=') && s
 ok('chat list narrows to the chosen folder', source.includes('const reusableChats = scopedChats ?? chats ?? []'));
 ok('a chat outside the folder is unbound', source.includes('scopedChats.some((chat) => chat.sessionId === draft.sessionId)'));
 ok('a failed scope keeps the unfiltered list', source.includes('if (!cancelled) setScopedChats(null);'));
+// --- the loading cue beside the chat picker ---
+ok('the form tracks a chat-loading state', source.includes('const [chatsLoading, setChatsLoading] = react.useState(false)'));
+ok('loading starts as soon as the folder changes', /setChatsLoading\(true\);\s*\n\s*const timer/.test(source));
+ok('loading clears on both success and failure', source.includes('.finally(() => {') && source.includes('if (!cancelled) setChatsLoading(false);'));
+ok('loading clears when the folder is emptied', source.includes('setScopedChats(null);\n\t\t\t\t\tsetChatsLoading(false);'));
+ok('a spinner is rendered next to the picker', source.includes('el(Spinner, { size: 12, label: t("form.chatLoading") })'));
+ok('the spinner has an accessible label', source.includes('role: "status"') && source.includes('"aria-label": label'));
+ok('the spinner needs no external stylesheet', source.includes('animateTransform'));
 
 // --- editing an existing schedule ---
 ok('panel has an edit button per row', source.includes('t("job.edit")'));
