@@ -357,6 +357,20 @@ try {
 	ok('edit changed name and expression', edited.body.job.name === 'Вечерний отчёт' && edited.body.job.expression === '30 18 * * *');
 	ok('edit kept the workspace', edited.body.job.workspacePath === path.resolve(path.join(dir, 'proj')));
 	ok('edit recomputed nextRunAt', edited.body.job.nextRunAt !== job.nextRunAt);
+	// An edit must rewrite its own record, never spawn a second one: the panel
+	// saves with POST to the job URL, and a duplicate here would silently
+	// double-schedule the task.
+	const afterEdit = await call(jobsRoute.handler, 'GET', '/api/cron-schedule/jobs');
+	ok('edit did not duplicate the job', afterEdit.body.jobs.filter((entry) => entry.id === job.id).length === 1);
+	ok('edit kept the job id and creation time', (() => {
+		const found = afterEdit.body.jobs.find((entry) => entry.id === job.id);
+		return found !== undefined && found.createdAt === job.createdAt;
+	})());
+	// A partial edit must leave the untouched fields alone.
+	const partial = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`, { enabled: false });
+	ok('partial edit keeps the prompt', partial.body.job.prompt === job.prompt);
+	ok('partial edit keeps the schedule', partial.body.job.expression === '30 18 * * *');
+	ok('partial edit applied its own field', partial.body.job.enabled === false);
 
 	// --- missing job 404 ---
 	const missing = await call(jobRoute.handler, 'GET', '/api/cron-schedule/jobs/does-not-exist');

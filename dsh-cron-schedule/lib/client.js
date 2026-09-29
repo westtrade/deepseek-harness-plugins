@@ -37,6 +37,9 @@ window.__ModuleLoader__.load({
 			"form.promptPlaceholder": "What should the new chat do?",
 			"form.add": "Add schedule",
 			"form.adding": "Adding…",
+			"form.save": "Save changes",
+			"form.saving": "Saving…",
+			"form.cancel": "Cancel",
 			"form.preview": "Next runs: {list}",
 			"form.invalid": "Check the form: {message}",
 			"column.name": "Name",
@@ -47,6 +50,9 @@ window.__ModuleLoader__.load({
 			"job.never": "never",
 			"job.run": "Run now",
 			"job.running": "Starting…",
+			"job.edit": "Edit",
+			"job.editing": "Editing…",
+			"job.updated": "Saved \"{name}\"",
 			"job.delete": "Delete",
 			"job.enable": "Enable",
 			"job.disable": "Disable",
@@ -87,6 +93,9 @@ window.__ModuleLoader__.load({
 			"form.promptPlaceholder": "新会话需要做什么？",
 			"form.add": "添加任务",
 			"form.adding": "添加中…",
+			"form.save": "保存修改",
+			"form.saving": "保存中…",
+			"form.cancel": "取消",
 			"form.preview": "接下来：{list}",
 			"form.invalid": "请检查表单：{message}",
 			"column.name": "名称",
@@ -97,6 +106,9 @@ window.__ModuleLoader__.load({
 			"job.never": "永不",
 			"job.run": "立即运行",
 			"job.running": "启动中…",
+			"job.edit": "编辑",
+			"job.editing": "编辑中…",
+			"job.updated": "已保存“{name}”",
 			"job.delete": "删除",
 			"job.enable": "启用",
 			"job.disable": "停用",
@@ -240,7 +252,7 @@ window.__ModuleLoader__.load({
 			return payload;
 		}
 		/** One row in the schedules table. */
-		function JobRow({ job, t, onChanged, onError }) {
+		function JobRow({ job, t, editing, onEdit, onChanged, onError }) {
 			const [busy, setBusy] = react.useState(null);
 			const next = formatAt(job.nextRunAt, job.timeZone);
 			const last = formatAt(job.lastRunAt, job.timeZone);
@@ -304,7 +316,12 @@ window.__ModuleLoader__.load({
 					el("div", { style: { marginTop: "2px" } }, job.prompt.length > 120 ? `${job.prompt.slice(0, 120)}…` : job.prompt)),
 				el("td", { style: { padding: "8px 10px", verticalAlign: "top" } },
 					el("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } },
-						button(busy === "run" ? t("job.running") : t("job.run"), run, { compact: true, disabled: busy !== null }),
+						button(t("job.run"), run, { compact: true, disabled: busy !== null }),
+						button(editing === true ? t("job.editing") : t("job.edit"), () => onEdit?.(job.id), {
+							compact: true,
+							disabled: busy !== null,
+							title: t("job.edit")
+						}),
 						button(job.enabled === true ? t("job.disable") : t("job.enable"), toggle, { compact: true, disabled: busy !== null }),
 						button(t("job.delete"), remove, { compact: true, disabled: busy !== null }))));
 		}
@@ -358,15 +375,37 @@ window.__ModuleLoader__.load({
 					button(t("missed.dismiss"), dismiss, { compact: true, disabled: busy })));
 		}
 		/** The add form: presets, a cron expression, a folder, and the task. */
-		function AddForm({ t, pickDirectory, workspaces, onAdded, onError }) {
-			const [draft, setDraft] = react.useState(() => ({
-				preset: "weekdays9",
-				expression: "0 9 * * 1-5",
-				name: "",
-				timeZone: localZone(),
-				workspacePath: "",
-				prompt: ""
-			}));
+		/**
+		* The schedule editor, used both to add a job and to change an existing
+		* one.
+		*
+		* When `job` is given the form opens pre-filled and saves with POST to the
+		* job's own URL; otherwise it starts from the default preset and creates a
+		* new job on the collection URL. Keeping one component means the folder
+		* picker, the preset list, and the live next-run preview behave identically
+		* on both paths.
+		*/
+		function JobForm({ t, pickDirectory, workspaces, job, onDone, onCancel, onError }) {
+			const editing = job !== undefined && job !== null;
+			const [draft, setDraft] = react.useState(() => editing
+				? {
+					// The stored expression may match a preset exactly; selecting it
+					// keeps the dropdown honest instead of always reading "custom".
+					preset: (PRESETS.find((entry) => entry.expression === job.expression) ?? { id: "custom" }).id,
+					expression: job.expression,
+					name: job.name,
+					timeZone: job.timeZone,
+					workspacePath: job.workspacePath,
+					prompt: job.prompt
+				}
+				: {
+					preset: "weekdays9",
+					expression: "0 9 * * 1-5",
+					name: "",
+					timeZone: localZone(),
+					workspacePath: "",
+					prompt: ""
+				});
 			const [busy, setBusy] = react.useState(false);
 			const [preview, setPreview] = react.useState(null);
 			const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
@@ -415,9 +454,12 @@ window.__ModuleLoader__.load({
 						workspacePath: draft.workspacePath.trim(),
 						prompt: draft.prompt
 					};
-					await callHost("POST", JOBS_URL, body);
-					setDraft((current) => ({ ...current, name: "", prompt: "" }));
-					await onAdded();
+					if (editing) {
+						await callHost("POST", `${JOBS_URL}/${encodeURIComponent(job.id)}`, body);
+					} else {
+						await callHost("POST", JOBS_URL, body);
+					}
+					await onDone(body.name);
 				} catch (error) {
 					onError(error.message);
 				} finally {
@@ -434,10 +476,12 @@ window.__ModuleLoader__.load({
 					padding: "12px 14px",
 					display: "flex",
 					flexDirection: "column",
-					gap: "10px"
+					gap: "10px",
+					...(editing ? { background: "var(--dsw-alias-bg-elevated, transparent)" } : {})
 				}
 			},
-				el("div", { style: { color: "var(--dsw-alias-label-primary)", fontSize: "13px", fontWeight: 600 } }, t("form.add")),
+				el("div", { style: { color: "var(--dsw-alias-label-primary)", fontSize: "13px", fontWeight: 600 } },
+					editing ? `${t("job.edit")}: ${job.name}` : t("form.add")),
 				el("div", { style: { display: "flex", gap: "10px", flexWrap: "wrap" } },
 					label(t("form.preset"), el("select", {
 						value: draft.preset,
@@ -502,15 +546,21 @@ window.__ModuleLoader__.load({
 					style: { ...inputStyle, resize: "vertical", fontFamily: "inherit" },
 					onChange: (event) => set({ prompt: event.target.value })
 				})),
-				el("div", null, button(busy ? t("form.adding") : t("form.add"), submit, {
-					primary: true,
-					disabled: busy || draft.workspacePath.trim() === "" || draft.prompt.trim() === "" || draft.expression.trim() === ""
-				})));
+				el("div", { style: { display: "flex", gap: "8px" } },
+					button(busy
+						? (editing ? t("form.saving") : t("form.adding"))
+						: (editing ? t("form.save") : t("form.add")), submit, {
+						primary: true,
+						disabled: busy || draft.workspacePath.trim() === "" || draft.prompt.trim() === "" || draft.expression.trim() === ""
+					}),
+					editing ? button(t("form.cancel"), () => onCancel?.(), { disabled: busy }) : null));
 		}
 		/** The panel body: missed banners, the table, and the add form. */
 		function CronPanel({ useWorkspaces, t, pickDirectory }) {
 			const [state, setState] = react.useState({ jobs: [], loading: true, error: null });
 			const [notice, setNotice] = useNotice();
+			/** Id of the job whose editor is open, or null when none is. */
+			const [editingId, setEditingId] = react.useState(null);
 			const workspaces = useWorkspaces((snapshot) => snapshot.items) ?? [];
 			const load = react.useCallback(async () => {
 				try {
@@ -526,6 +576,16 @@ window.__ModuleLoader__.load({
 				return () => clearInterval(timer);
 			}, [load]);
 			const missed = state.jobs.filter((job) => Array.isArray(job.missed) && job.missed.length > 0);
+			const workspaceOptions = workspaces.map((workspace) => ({
+				id: workspace.workspaceId ?? workspace.id ?? workspace.path,
+				path: workspace.path,
+				title: workspace.title
+			}));
+			// A deleted job must not leave a dangling editor open.
+			const editing = editingId === null ? undefined : state.jobs.find((job) => job.id === editingId);
+			react.useEffect(() => {
+				if (editingId !== null && !state.loading && editing === undefined) setEditingId(null);
+			}, [editingId, editing, state.loading]);
 			return el("div", { style: { height: "100%", overflow: "auto", padding: "16px 20px" } },
 				el("div", { style: { display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "4px" } },
 					el("h2", { style: { margin: 0, fontSize: "16px", lineHeight: "24px", color: "var(--dsw-alias-label-primary)" } }, t("panel.title")),
@@ -568,22 +628,39 @@ window.__ModuleLoader__.load({
 													fontSize: "12px"
 												}
 											}, heading)))),
-										el("tbody", null, state.jobs.map((job) => el(JobRow, {
-											key: job.id,
-											job,
-											t,
-											onChanged: load,
-											onError: setNotice
-										}))))),
-							el(AddForm, {
+										el("tbody", null, state.jobs.flatMap((job) => {
+											const row = el(JobRow, {
+												key: job.id,
+												job,
+												t,
+												editing: job.id === editingId,
+												onEdit: (id) => setEditingId((current) => (current === id ? null : id)),
+												onChanged: load,
+												onError: setNotice
+											});
+											if (job.id !== editingId) return [row];
+											// The editor renders in place, directly under its own row.
+											return [row, el("tr", { key: `${job.id}-editor` },
+												el("td", { colSpan: 5, style: { padding: "0 10px 12px" } },
+													el(JobForm, {
+														t,
+														pickDirectory,
+														workspaces: workspaceOptions,
+														job,
+														onDone: async (name) => {
+															setEditingId(null);
+															await load();
+															setNotice(fill(t("job.updated"), { name }));
+														},
+														onCancel: () => setEditingId(null),
+														onError: setNotice
+													})))];
+										})))),
+							el(JobForm, {
 								t,
 								pickDirectory,
-								workspaces: workspaces.map((workspace) => ({
-									id: workspace.workspaceId ?? workspace.id ?? workspace.path,
-									path: workspace.path,
-									title: workspace.title
-								})),
-								onAdded: async () => {
+								workspaces: workspaceOptions,
+								onDone: async () => {
 									await load();
 									setNotice(null);
 								},

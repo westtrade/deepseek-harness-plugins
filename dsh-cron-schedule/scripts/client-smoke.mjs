@@ -154,8 +154,9 @@ for (const required of [
 	'panel.title', 'panel.subtitle', 'panel.empty', 'panel.error',
 	'form.name', 'form.preset', 'form.expression', 'form.timeZone',
 	'form.workspace', 'form.browse', 'form.pickExisting', 'form.prompt', 'form.add',
+	'form.save', 'form.saving', 'form.cancel',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
-	'job.run', 'job.delete', 'job.enable', 'job.disable',
+	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable',
 	'missed.title', 'missed.hint', 'missed.run', 'missed.dismiss'
 ]) {
 	ok(`copy has ${required}`, enKeys.includes(required) && zhKeys.includes(required));
@@ -175,6 +176,16 @@ ok('panel has a workspace dropdown', source.includes('form.pickExisting'));
 ok('panel has the OS folder picker button', source.includes('form.browse'));
 ok('panel keeps the host error message', source.includes('payload?.error'));
 ok('panel does not require any non-react package', !/require\((?!["']react["'])/.test(source.replace(/\brequire\("react"\)/g, 'require("react")')) || source.includes('require("react")'));
+
+// --- editing an existing schedule ---
+ok('panel has an edit button per row', source.includes('t("job.edit")'));
+ok('panel tracks which job is being edited', source.includes('editingId'));
+ok('panel renders the editor inline under the row', source.includes('${job.id}-editor'));
+ok('editor saves with POST to the job URL', source.includes('encodeURIComponent(job.id)}`, body)'));
+ok('editor can be cancelled', source.includes('onCancel'));
+ok('one component serves add and edit', source.includes('function JobForm(') && !source.includes('function AddForm('));
+ok('editor preselects a matching preset', source.includes('entry.expression === job.expression'));
+ok('a deleted job closes its editor', source.includes('editing === undefined) setEditingId(null)'));
 
 console.log('client wiring OK');
 console.log(`  module id : ${captured.id}`);
