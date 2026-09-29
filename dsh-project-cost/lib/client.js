@@ -15,6 +15,8 @@ window.__ModuleLoader__.load({
 		const inject = ["slots", "locale"];
 		/** Host route answering the report JSON (registered by the Host half). */
 		const REPORT_URL = "/api/project-cost";
+		/** Host route answering the remaining routerai.ru credit. */
+		const BALANCE_URL = "/api/project-cost/balance";
 		/** Auto-refresh interval for open surfaces. */
 		const REFRESH_MS = 60000;
 		const en = {
@@ -25,6 +27,7 @@ window.__ModuleLoader__.load({
 			"panel.empty": "No billed model calls yet.",
 			"panel.error": "Cost report unavailable: {message}",
 			"panel.updated": "Updated {time}",
+			"panel.balance": "left on routerai.ru",
 			"column.directory": "Directory",
 			"column.spent": "Spent",
 			"row.sessions": "{sessions} sessions · {tokens} tokens",
@@ -38,6 +41,7 @@ window.__ModuleLoader__.load({
 			"panel.empty": "尚无计费模型调用。",
 			"panel.error": "费用报告不可用：{message}",
 			"panel.updated": "更新于 {time}",
+			"panel.balance": "routerai.ru 余额",
 			"column.directory": "目录",
 			"column.spent": "已花费",
 			"row.sessions": "{sessions} 个会话 · {tokens} 令牌",
@@ -67,11 +71,28 @@ window.__ModuleLoader__.load({
 			return await response.json();
 		}
 		/**
+		* Fetch the remaining routerai.ru credit. A failure is not an error state
+		* for the meter: the spend report stands on its own, so the caller only
+		* loses the balance suffix.
+		*/
+		async function fetchBalance() {
+			try {
+				const response = await fetch(BALANCE_URL, { cache: "no-store" });
+				if (!response.ok) return null;
+				const body = await response.json();
+				return typeof body?.creditsRub === "number" && Number.isFinite(body.creditsRub) ? body.creditsRub : null;
+			} catch {
+				return null;
+			}
+		}
+		/**
 		* Minimal shared report store so the panel row and the panel body price
-		* from one fetch each cycle instead of two.
+		* from one fetch each cycle instead of two. `balanceRub` rides along: it
+		* comes from the same refresh so the two numbers on the row agree.
 		*/
 		const store = {
 			report: null,
+			balanceRub: null,
 			error: null,
 			loading: false,
 			listeners: new Set()
@@ -88,7 +109,9 @@ window.__ModuleLoader__.load({
 			store.loading = true;
 			notify();
 			try {
-				store.report = await fetchReport();
+				const [report, balanceRub] = await Promise.all([fetchReport(), fetchBalance()]);
+				store.report = report;
+				if (balanceRub !== null) store.balanceRub = balanceRub;
 				store.error = null;
 			} catch (error) {
 				store.error = String(error?.message ?? error);
@@ -105,10 +128,11 @@ window.__ModuleLoader__.load({
 		}
 		/**
 		* The panellist entry: the ruble glyph plus — on the same row — the total
-		* spend. `PanelRow` renders its label from a resolved string and offers no
-		* content slot beside it, so the total rides the row's `::after` through one
-		* data attribute (the same technique as the tree badges). The badge follows
-		* the label and hides with it in the collapsed rail.
+		* spend, and behind a slash the routerai.ru credit that is left.
+		* `PanelRow` renders its label from a resolved string and offers no
+		* content slot beside it, so the money rides the row's `::after` through
+		* one data attribute (the same technique as the tree badges). The badge
+		* follows the label and hides with it in the collapsed rail.
 		*/
 		function PanelEntry({ size }) {
 			const state = useReport();
@@ -129,7 +153,12 @@ window.__ModuleLoader__.load({
 					row.removeAttribute(TOTAL_ATTR);
 					return;
 				}
-				row.setAttribute(TOTAL_ATTR, formatRub(total));
+				// Spend and the remaining credit read as one pair: "712,86 ₽ / 975,72 ₽".
+				const balance = state.balanceRub;
+				const label = typeof balance === "number" && Number.isFinite(balance)
+					? `${formatRub(total)} / ${formatRub(balance)}`
+					: formatRub(total);
+				row.setAttribute(TOTAL_ATTR, label);
 			});
 			return react.createElement("span", {
 				ref: host,
@@ -283,14 +312,16 @@ window.__ModuleLoader__.load({
 				}
 			}, react.createElement("div", {
 				style: { flex: "1 1 auto", color: "var(--dsw-alias-label-secondary)", fontWeight: 600 }
-			}, "Итого"), react.createElement("div", {
+			}, "Итого", typeof state.balanceRub === "number" && Number.isFinite(state.balanceRub) ? react.createElement("div", {
+				style: { fontWeight: 400, fontSize: "11px", color: "var(--dsw-alias-label-tertiary)" }
+			}, t("panel.balance")) : null), react.createElement("div", {
 				style: {
 					flex: "0 0 auto",
 					color: "var(--dsw-alias-label-primary)",
 					fontWeight: 600,
 					fontVariantNumeric: "tabular-nums"
 				}
-			}, formatRub(report.totals?.costRub ?? 0)))), updated !== null ? react.createElement("div", {
+			}, typeof state.balanceRub === "number" && Number.isFinite(state.balanceRub) ? `${formatRub(report.totals?.costRub ?? 0)} / ${formatRub(state.balanceRub)}` : formatRub(report.totals?.costRub ?? 0)))), updated !== null ? react.createElement("div", {
 				style: { marginTop: "8px", color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" }
 			}, t("panel.updated", { time: updated.toLocaleTimeString() })) : null);
 		}

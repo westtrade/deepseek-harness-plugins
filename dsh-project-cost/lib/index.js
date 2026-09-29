@@ -19,6 +19,7 @@
 const REV = new URL(import.meta.url).search;
 const { buildReport, defaultSessionsRoot, defaultPriceCachePath } = await import('./report.js' + REV);
 const { loadPrices } = await import('./prices.js' + REV);
+const { fetchBalance, DEFAULT_API_KEY_ENV, DEFAULT_BALANCE_URL } = await import('./balance.js' + REV);
 
 /** Cordis service name for this plugin (also its loader row id). */
 export const name = 'project-cost';
@@ -32,6 +33,9 @@ export const REPORT_PATH = '/api/project-cost';
 /** Exact route answering the routerai.ru price table (for in-chat pricing). */
 export const PRICES_PATH = '/api/project-cost/prices';
 
+/** Exact route answering the remaining routerai.ru credit. */
+export const BALANCE_PATH = '/api/project-cost/balance';
+
 /**
  * Host plugin body: registers `GET /api/project-cost`.
  *
@@ -40,9 +44,11 @@ export const PRICES_PATH = '/api/project-cost/prices';
  * lifetime, so each poll after the first only re-reads session logs that
  * actually changed.
  *
- * @param ctx - Host context carrying `webServer`.
+ * @param ctx - Host context carrying `webServer` (and optionally
+ *   `credentials`, used to resolve the routerai.ru API key for the balance).
  * @param config - optional `{ cacheTtlMs, sessionsRoot, priceCachePath,
- *   priceUrl }` overrides.
+ *   priceUrl, pricesTtlMs, balanceTtlMs, balanceUrl, apiKeyEnv,
+ *   balanceTimeoutMs }` overrides.
  */
 export function apply(ctx, config = {}) {
 	const cache = new Map();
@@ -135,6 +141,55 @@ export function apply(ctx, config = {}) {
 		}
 	};
 
+	// The credit endpoint is a small, rate-limited account call, so it answers
+	// from its own minute memo and degrades to `{ unavailable }` instead of a
+	// failing route: the spend meter stays useful without a configured key.
+	let balanceCached = undefined;
+	let balanceAt = 0;
+	let balanceInflight = undefined;
+	const balanceTtlMs = Number.isFinite(config.balanceTtlMs) ? config.balanceTtlMs : 60000;
+	const balanceUrl = config.balanceUrl ?? DEFAULT_BALANCE_URL;
+	const apiKeyEnv = config.apiKeyEnv ?? DEFAULT_API_KEY_ENV;
+
+	function balance() {
+		const now = Date.now();
+		if (balanceCached !== undefined && now - balanceAt < balanceTtlMs) return Promise.resolve(balanceCached);
+		if (balanceInflight !== undefined) return balanceInflight;
+		balanceInflight = fetchBalance(ctx, { url: balanceUrl, apiKeyEnv, timeoutMs: config.balanceTimeoutMs }).catch((error) => ({
+			creditsRub: undefined,
+			currency: 'RUB',
+			fetchedAt: Date.now(),
+			unavailable: String(error?.code ?? error?.message ?? error)
+		})).then((value) => {
+			balanceCached = value;
+			balanceAt = Date.now();
+			return value;
+		}).finally(() => {
+			balanceInflight = undefined;
+		});
+		return balanceInflight;
+	}
+
+	const balanceHandler = async (req, res) => {
+		if (req.method !== 'GET' && req.method !== 'HEAD') {
+			res.writeHead(405, { allow: 'GET, HEAD' });
+			res.end();
+			return;
+		}
+		try {
+			const body = JSON.stringify(await balance());
+			res.writeHead(200, {
+				'content-type': 'application/json; charset=utf-8',
+				'cache-control': 'no-store'
+			});
+			res.end(req.method === 'HEAD' ? undefined : body);
+		} catch (error) {
+			ctx.logger?.error?.(error);
+			res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+			res.end(JSON.stringify({ error: String(error?.message ?? error) }));
+		}
+	};
+
 	ctx.effect(() => ctx.webServer.register({
 		kind: 'exact',
 		path: REPORT_PATH,
@@ -145,4 +200,9 @@ export function apply(ctx, config = {}) {
 		path: PRICES_PATH,
 		handler: pricesHandler
 	}), 'project-cost: prices route');
+	ctx.effect(() => ctx.webServer.register({
+		kind: 'exact',
+		path: BALANCE_PATH,
+		handler: balanceHandler
+	}), 'project-cost: balance route');
 }
