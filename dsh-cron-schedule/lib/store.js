@@ -68,15 +68,85 @@ function requireText(value, field, maxLength) {
 }
 
 /**
+ * Validate one model choice against the deployment's allow-list.
+ *
+ * The list is the person's policy: when it is non-empty, a job may only name a
+ * model from it, and the AI's tool is told to pick from the same set. An empty
+ * list means "no restriction" — a single-model deployment needs no setup.
+ *
+ * @param value - `{ provider, model }`, `null`/undefined for "deployment default".
+ * @param allowed - configured allow-list, or undefined.
+ * @param field - field name used in the error message.
+ * @param available - every model the deployment routes, or undefined to skip the
+ *   routability check. Both checks matter: the allow-list enforces the person's
+ *   policy, and the catalog catches a typo that would only fail at run time.
+ * @returns the normalized `{ provider, model }`, or undefined for the default.
+ */
+export function normalizeModelChoice(value, allowed, field, available) {
+	if (value === undefined || value === null || value === '') return undefined;
+	if (typeof value !== 'object' || Array.isArray(value)) throw new JobInputError(`${field} must be an object with provider and model`, field);
+	const provider = requireText(value.provider, `${field}.provider`, 200);
+	const model = requireText(value.model, `${field}.model`, 300);
+	const list = Array.isArray(allowed) ? allowed : [];
+	if (list.length > 0 && !list.some((entry) => entry.provider === provider && entry.model === model)) {
+		throw new JobInputError(`model "${provider}/${model}" is not in the allowed list`, field);
+	}
+	const routable = Array.isArray(available) ? available : [];
+	if (routable.length > 0 && !routable.some((entry) => entry.provider === provider && entry.model === model)) {
+		throw new JobInputError(`model "${provider}/${model}" is not available in this deployment`, field);
+	}
+	return { provider, model };
+}
+
+/**
+ * Normalize the settings-level allow-list of models.
+ *
+ * @param value - raw list from the settings panel (or an AI tool call).
+ * @param available - every model the deployment can actually route, as
+ *   `{ provider, model }` entries. Used to reject typos: allowing a model that
+ *   cannot be resolved would only fail later, at run time.
+ * @returns a de-duplicated list, in the given order.
+ * @throws {JobInputError} for a malformed entry or an unroutable model.
+ */
+export function normalizeAllowedModels(value, available) {
+	if (value === undefined || value === null) return [];
+	if (!Array.isArray(value)) throw new JobInputError('allowedModels must be an array', 'allowedModels');
+	const routable = new Set((Array.isArray(available) ? available : []).map((entry) => `${entry.provider}\u0000${entry.model}`));
+	const seen = new Set();
+	const out = [];
+	for (const entry of value) {
+		if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+			throw new JobInputError('each allowed model needs provider and model', 'allowedModels');
+		}
+		const provider = requireText(entry.provider, 'allowedModels.provider', 200);
+		const model = requireText(entry.model, 'allowedModels.model', 300);
+		const key = `${provider}\u0000${model}`;
+		if (seen.has(key)) continue;
+		// When the caller supplies the catalog, an unknown pair is a mistake worth
+		// reporting rather than a policy that silently never matches.
+		if (routable.size > 0 && !routable.has(key)) {
+			throw new JobInputError(`model "${provider}/${model}" is not available in this deployment`, 'allowedModels');
+		}
+		seen.add(key);
+		out.push({ provider, model });
+	}
+	return out;
+}
+
+/**
  * Validate and normalize one create/update request into a stored record.
  *
  * @param input - raw request fields (`name`, `expression`, `timeZone`,
- *   `workspacePath`, `prompt`, `enabled`).
+ *   `workspacePath`, `prompt`, `enabled`, `model`).
  * @param base - existing record when updating, for defaults and identity.
  * @param now - epoch milliseconds used for the audit fields.
+ * @param allowed - the deployment's allow-list of models (`{ provider, model }`
+ *   entries), or undefined when none is configured. A job may only name a model
+ *   from this list.
+ * @param available - every model the deployment routes, used to reject a typo.
  * @returns a record ready to persist.
  */
-export function normalizeJob(input, base, now) {
+export function normalizeJob(input, base, now, allowed, available) {
 	const source = input ?? {};
 	const name = requireText(source.name ?? base?.name, 'name', 120);
 	const expression = requireText(source.expression ?? base?.expression, 'expression', 200);
@@ -93,6 +163,9 @@ export function normalizeJob(input, base, now) {
 		throw error;
 	}
 	const enabled = typeof source.enabled === 'boolean' ? source.enabled : base?.enabled ?? true;
+	// The model this job runs on. `null`/absent means "whatever the deployment's
+	// default is", so a job keeps working when the default changes.
+	const model = normalizeModelChoice(source.model === undefined ? base?.model : source.model, allowed, 'model', available);
 	/**
 	 * Whether runs missed while DSH was down are replayed automatically at the
 	 * next start instead of waiting for a person to approve them.
@@ -116,6 +189,7 @@ export function normalizeJob(input, base, now) {
 		prompt,
 		enabled,
 		autoCatchUp,
+		...(model === undefined ? {} : { model }),
 		createdAt: base?.createdAt ?? now,
 		updatedAt: now,
 		...(base?.nextRunAt === undefined ? {} : { nextRunAt: base.nextRunAt }),
@@ -167,6 +241,7 @@ export function jobView(job, locale = 'ru', now = Date.now()) {
 		prompt: job.prompt,
 		enabled: job.enabled,
 		autoCatchUp: job.autoCatchUp === true,
+		model: job.model === undefined || job.model === null ? null : { provider: job.model.provider, model: job.model.model },
 		createdAt: job.createdAt,
 		updatedAt: job.updatedAt,
 		nextRunAt: job.nextRunAt ?? null,
@@ -208,6 +283,9 @@ function reviveJob(raw) {
 		prompt: raw.prompt,
 		enabled: raw.enabled !== false,
 		autoCatchUp: raw.autoCatchUp === true,
+		...(raw.model !== null && typeof raw.model === 'object' && typeof raw.model.provider === 'string' && typeof raw.model.model === 'string'
+			? { model: { provider: raw.model.provider, model: raw.model.model } }
+			: {}),
 		createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
 		updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : Date.now(),
 		...(Number.isFinite(raw.nextRunAt) ? { nextRunAt: raw.nextRunAt } : {}),
@@ -233,12 +311,22 @@ export async function openJobStore(options = {}) {
 	/** @type {Map<string, any>} */
 	const jobs = new Map();
 	let writeChain = Promise.resolve();
+	/** Plugin settings that live beside the jobs (currently the model allow-list). */
+	let settings = { allowedModels: [] };
 	try {
 		const parsed = JSON.parse(await readFile(file, 'utf8'));
 		const list = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
 		for (const raw of list) {
 			const job = reviveJob(raw);
 			if (job !== undefined) jobs.set(job.id, job);
+		}
+		// An older file (or a hand-edited one) may have no settings section, so
+		// read defensively and fall back to the empty allow-list.
+		const stored = parsed?.settings;
+		if (stored !== null && typeof stored === 'object' && Array.isArray(stored.allowedModels)) {
+			settings = { allowedModels: stored.allowedModels.flatMap((entry) => (entry !== null && typeof entry === 'object' && typeof entry.provider === 'string' && typeof entry.model === 'string'
+				? [{ provider: entry.provider, model: entry.model }]
+				: [])) };
 		}
 	} catch (error) {
 		if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
@@ -247,7 +335,7 @@ export async function openJobStore(options = {}) {
 	/** Serialize one durable write; a failed write never blocks the next one. */
 	const persist = () => {
 		writeChain = writeChain.then(async () => {
-			const payload = JSON.stringify({ version: STORE_VERSION, jobs: [...jobs.values()] }, null, 1);
+			const payload = JSON.stringify({ version: STORE_VERSION, settings, jobs: [...jobs.values()] }, null, 1);
 			const dir = path.dirname(file);
 			await mkdir(dir, { recursive: true });
 			const temp = `${file}.${process.pid}.tmp`;
@@ -295,6 +383,21 @@ export async function openJobStore(options = {}) {
 			jobs.set(id, next);
 			await persist();
 			return next;
+		},
+		/** The current plugin settings (a frozen copy). */
+		settings() {
+			return { allowedModels: settings.allowedModels.map((entry) => ({ ...entry })) };
+		},
+		/**
+		 * Replace the plugin settings and persist.
+		 *
+		 * @param next - the settings object to store.
+		 * @returns the stored settings.
+		 */
+		async setSettings(next) {
+			settings = { allowedModels: (next?.allowedModels ?? []).map((entry) => ({ provider: entry.provider, model: entry.model })) };
+			await persist();
+			return this.settings();
 		},
 		/** Persist pending state (used when the scheduler changed memory only). */
 		flush: persist

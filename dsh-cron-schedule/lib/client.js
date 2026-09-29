@@ -14,6 +14,8 @@ window.__ModuleLoader__.load({
 		const inject = ["slots", "locale", "uiWorkspace"];
 		/** Host routes (registered by the Host half). */
 		const JOBS_URL = "/api/cron-schedule/jobs";
+		/** Host route answering the plugin settings and the routable model catalog. */
+		const SETTINGS_URL = "/api/cron-schedule/settings";
 		/** Poll interval while the panel is open. */
 		const REFRESH_MS = 20000;
 		const en = {
@@ -23,6 +25,13 @@ window.__ModuleLoader__.load({
 			"panel.error": "Schedule service unavailable: {message}",
 			"panel.empty": "No schedules yet. Add one below.",
 			"panel.refresh": "Refresh",
+			"settings.allowedModels": "Models the AI may schedule on",
+			"settings.allowedModelsHint": "Empty means no restriction: the AI may pick any routed model. Add entries to limit both the panel's picker and the AI's cron_create to this list. Only a person can change it.",
+			"settings.allowedModelsEmpty": "No restriction — every routed model is allowed.",
+			"settings.addModel": "Add model",
+			"settings.addModelPlaceholder": "— pick a model to allow —",
+			"settings.remove": "Remove",
+			"settings.save": "Save list",
 			"form.name": "Name",
 			"form.namePlaceholder": "Morning report",
 			"form.preset": "When",
@@ -42,8 +51,12 @@ window.__ModuleLoader__.load({
 			"form.cancel": "Cancel",
 			"form.preview": "Next runs: {list}",
 			"form.invalid": "Check the form: {message}",
+			"form.model": "Model",
+			"form.modelDefault": "Deployment default",
+			"form.modelRestricted": "Only models allowed in Settings can be picked",
 			"form.autoCatchUp": "Catch up missed runs after a restart",
 			"form.autoCatchUpHint": "On: runs missed while DSH was off start by themselves at the next launch. Off: they wait for you to press Run. Only a person can change this.",
+			"column.model": "Model",
 			"column.auto": "Catch-up",
 			"column.autoOn": "auto",
 			"column.autoAsk": "ask",
@@ -84,6 +97,13 @@ window.__ModuleLoader__.load({
 			"panel.error": "定时服务不可用：{message}",
 			"panel.empty": "还没有任务，请在下方添加。",
 			"panel.refresh": "刷新",
+			"settings.allowedModels": "允许 AI 使用的模型",
+			"settings.allowedModelsHint": "留空表示不限制：AI 可以选择任何可路由的模型。添加条目后，面板的下拉框和 AI 的 cron_create 都只能使用该列表。只有人可以修改。",
+			"settings.allowedModelsEmpty": "未限制 — 允许所有可路由模型。",
+			"settings.addModel": "添加模型",
+			"settings.addModelPlaceholder": "— 选择要允许的模型 —",
+			"settings.remove": "移除",
+			"settings.save": "保存列表",
 			"form.name": "名称",
 			"form.namePlaceholder": "早间报告",
 			"form.preset": "时间",
@@ -103,8 +123,12 @@ window.__ModuleLoader__.load({
 			"form.cancel": "取消",
 			"form.preview": "接下来：{list}",
 			"form.invalid": "请检查表单：{message}",
+			"form.model": "模型",
+			"form.modelDefault": "部署默认",
+			"form.modelRestricted": "只能选择在设置中允许的模型",
 			"form.autoCatchUp": "重启后自动补跑错过的任务",
 			"form.autoCatchUpHint": "开启：DSH 关闭期间错过的运行会在下次启动时自行开始。关闭：等待你点击「补跑」。只有人可以修改此项。",
+			"column.model": "模型",
 			"column.auto": "补跑",
 			"column.autoOn": "自动",
 			"column.autoAsk": "询问",
@@ -326,6 +350,17 @@ window.__ModuleLoader__.load({
 						padding: "8px 10px",
 						verticalAlign: "top",
 						fontSize: "12px",
+						color: job.model === null || job.model === undefined ? "var(--dsw-alias-label-tertiary)" : "var(--dsw-alias-label-secondary)",
+						wordBreak: "break-all"
+					}
+				}, job.model === null || job.model === undefined
+					? t("form.modelDefault")
+					: `${job.model.provider}/${job.model.model}`),
+				el("td", {
+					style: {
+						padding: "8px 10px",
+						verticalAlign: "top",
+						fontSize: "12px",
 						color: job.autoCatchUp === true ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)"
 					},
 					title: t("form.autoCatchUpHint")
@@ -404,8 +439,10 @@ window.__ModuleLoader__.load({
 		* picker, the preset list, and the live next-run preview behave identically
 		* on both paths.
 		*/
-		function JobForm({ t, pickDirectory, workspaces, job, onDone, onCancel, onError }) {
+		function JobForm({ t, pickDirectory, workspaces, job, models, defaultModel, restricted, onDone, onCancel, onError }) {
 			const editing = job !== undefined && job !== null;
+			/** `"provider\u0000model"` ↔ `""` for "use the deployment default". */
+			const modelKey = (entry) => (entry === undefined || entry === null ? "" : `${entry.provider}\u0000${entry.model}`);
 			const [draft, setDraft] = react.useState(() => editing
 				? {
 					// The stored expression may match a preset exactly; selecting it
@@ -416,7 +453,8 @@ window.__ModuleLoader__.load({
 					timeZone: job.timeZone,
 					workspacePath: job.workspacePath,
 					prompt: job.prompt,
-					autoCatchUp: job.autoCatchUp === true
+					autoCatchUp: job.autoCatchUp === true,
+					modelKey: modelKey(job.model)
 				}
 				: {
 					preset: "weekdays9",
@@ -426,7 +464,8 @@ window.__ModuleLoader__.load({
 					workspacePath: "",
 					prompt: "",
 					// Off by default: a new schedule asks before replaying downtime.
-					autoCatchUp: false
+					autoCatchUp: false,
+					modelKey: ""
 				});
 			const [busy, setBusy] = react.useState(false);
 			const [preview, setPreview] = react.useState(null);
@@ -478,7 +517,13 @@ window.__ModuleLoader__.load({
 						// Sent only from here: the Host refuses this flag from any
 						// caller that is not an authenticated browser session, so the
 						// panel is the one place it can be turned on.
-						autoCatchUp: draft.autoCatchUp === true
+						autoCatchUp: draft.autoCatchUp === true,
+						// `null` clears a stored choice, so the job follows the
+						// deployment default again.
+						model: draft.modelKey === "" ? null : (() => {
+							const [provider, model] = draft.modelKey.split("\u0000");
+							return { provider, model };
+						})()
 					};
 					if (editing) {
 						await callHost("POST", `${JOBS_URL}/${encodeURIComponent(job.id)}`, body);
@@ -533,6 +578,21 @@ window.__ModuleLoader__.load({
 						style: { ...inputStyle, minWidth: "150px" },
 						onChange: (event) => set({ timeZone: event.target.value })
 					})),
+					// Model picker: the allowed list when a person configured one in
+					// Settings, otherwise every model this deployment routes.
+					label(t("form.model"), el("select", {
+						value: draft.modelKey,
+						style: { ...inputStyle, minWidth: "220px" },
+						title: restricted ? t("form.modelRestricted") : undefined,
+						onChange: (event) => set({ modelKey: event.target.value })
+					},
+						el("option", { value: "" }, defaultModel === null || defaultModel === undefined
+							? t("form.modelDefault")
+							: `${t("form.modelDefault")} — ${defaultModel.model}`),
+						(models ?? []).map((entry) => el("option", {
+							key: `${entry.provider}\u0000${entry.model}`,
+							value: `${entry.provider}\u0000${entry.model}`
+						}, `${entry.name} — ${entry.provider}/${entry.model}`)))),
 					label(t("form.name"), el("input", {
 						value: draft.name,
 						placeholder: t("form.namePlaceholder"),
@@ -602,6 +662,8 @@ window.__ModuleLoader__.load({
 		/** The panel body: missed banners, the table, and the add form. */
 		function CronPanel({ useWorkspaces, t, pickDirectory }) {
 			const [state, setState] = react.useState({ jobs: [], loading: true, error: null });
+			/** The model allow-list plus the routable catalog, from the host. */
+			const [settings, setSettings] = react.useState({ allowedModels: [], models: [], default: null, loaded: false });
 			const [notice, setNotice] = useNotice();
 			/** Id of the job whose editor is open, or null when none is. */
 			const [editingId, setEditingId] = react.useState(null);
@@ -614,11 +676,36 @@ window.__ModuleLoader__.load({
 					setState((current) => ({ ...current, loading: false, error: error.message }));
 				}
 			}, []);
+			const loadSettings = react.useCallback(async () => {
+				try {
+					const payload = await callHost("GET", SETTINGS_URL);
+					setSettings({
+						allowedModels: Array.isArray(payload?.allowedModels) ? payload.allowedModels : [],
+						models: Array.isArray(payload?.models) ? payload.models : [],
+						default: payload?.default ?? null,
+						loaded: true
+					});
+				} catch {
+					// The panel still works without the catalog: the model picker
+					// simply offers only the deployment default.
+					setSettings({ allowedModels: [], models: [], default: null, loaded: true });
+				}
+			}, []);
 			react.useEffect(() => {
 				void load();
-				const timer = setInterval(() => void load(), REFRESH_MS);
+				void loadSettings();
+				const timer = setInterval(() => {
+					void load();
+					void loadSettings();
+				}, REFRESH_MS);
 				return () => clearInterval(timer);
-			}, [load]);
+			}, [load, loadSettings]);
+			// The job form offers exactly what the person allowed; an empty
+			// allow-list means "no restriction", so the whole catalog is offered.
+			const restricted = settings.allowedModels.length > 0;
+			const modelChoices = restricted
+				? settings.models.filter((entry) => settings.allowedModels.some((allowed) => allowed.provider === entry.provider && allowed.model === entry.model))
+				: settings.models;
 			const missed = state.jobs.filter((job) => Array.isArray(job.missed) && job.missed.length > 0);
 			const workspaceOptions = workspaces.map((workspace) => ({
 				id: workspace.workspaceId ?? workspace.id ?? workspace.path,
@@ -662,7 +749,7 @@ window.__ModuleLoader__.load({
 								: el("div", { style: { border: "1px solid var(--dsw-alias-border-l4)", borderRadius: "12px", overflow: "hidden" } },
 									el("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: "13px" } },
 										el("thead", null, el("tr", { style: { background: "var(--dsw-alias-bg-elevated, transparent)" } },
-											[t("column.name"), t("column.when"), t("column.next"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
+											[t("column.name"), t("column.when"), t("column.next"), t("column.model"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
 												key: heading,
 												style: {
 													textAlign: "left",
@@ -685,11 +772,14 @@ window.__ModuleLoader__.load({
 											if (job.id !== editingId) return [row];
 											// The editor renders in place, directly under its own row.
 											return [row, el("tr", { key: `${job.id}-editor` },
-												el("td", { colSpan: 6, style: { padding: "0 10px 12px" } },
+												el("td", { colSpan: 7, style: { padding: "0 10px 12px" } },
 													el(JobForm, {
 														t,
 														pickDirectory,
 														workspaces: workspaceOptions,
+														models: modelChoices,
+														defaultModel: settings.default,
+														restricted,
 														job,
 														onDone: async (name) => {
 															setEditingId(null);
@@ -704,6 +794,9 @@ window.__ModuleLoader__.load({
 								t,
 								pickDirectory,
 								workspaces: workspaceOptions,
+								models: modelChoices,
+								defaultModel: settings.default,
+								restricted,
 								onDone: async () => {
 									await load();
 									setNotice(null);
@@ -724,6 +817,97 @@ window.__ModuleLoader__.load({
 			},
 				el("circle", { cx: "8", cy: "8", r: "6.25", stroke: "currentColor", strokeWidth: "1.5" }),
 				el("path", { d: "M8 4.75V8l2.5 1.6", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round" }));
+		}
+		/**
+		* The Settings row: the list of models the AI may schedule on.
+		*
+		* An empty list means "no restriction" — the AI may pick any model this
+		* deployment routes. Once the person adds entries, both the panel's picker
+		* and `cron_create` are limited to them, so the list is the policy that
+		* bounds what the AI can schedule. Writing it is refused by the Host for
+		* anything but an authenticated browser session.
+		*/
+		function ModelAllowListRow({ t }) {
+			const [state, setState] = react.useState({ allowedModels: [], models: [], loading: true, saving: false });
+			const [notice, setNotice] = useNotice();
+			/** A copy of the allow-list that edits mutate locally before saving. */
+			const [draft, setDraft] = react.useState(null);
+			/** `"provider\u0000model"` of the catalog entry picked in the dropdown. */
+			const [picker, setPicker] = react.useState("");
+			const load = react.useCallback(async () => {
+				try {
+					const payload = await callHost("GET", SETTINGS_URL);
+					const allowed = Array.isArray(payload?.allowedModels) ? payload.allowedModels : [];
+					setState({
+						allowedModels: allowed,
+						models: Array.isArray(payload?.models) ? payload.models : [],
+						loading: false,
+						saving: false
+					});
+					setDraft(allowed.map((entry) => ({ ...entry })));
+				} catch (error) {
+					setState((current) => ({ ...current, loading: false }));
+					setNotice(error.message);
+				}
+			}, []);
+			react.useEffect(() => {
+				void load();
+			}, [load]);
+			const rows = draft ?? state.allowedModels;
+			const keyOf = (entry) => `${entry.provider}\u0000${entry.model}`;
+			const present = new Set(rows.map(keyOf));
+			const add = (key) => {
+				if (key === "") return;
+				const [provider, model] = key.split("\u0000");
+				if (present.has(key)) return;
+				setDraft([...rows, { provider, model }]);
+				setPicker("");
+			};
+			const remove = (key) => setDraft(rows.filter((entry) => keyOf(entry) !== key));
+			const save = async () => {
+				setState((current) => ({ ...current, saving: true }));
+				try {
+					await callHost("POST", SETTINGS_URL, { allowedModels: rows });
+					await load();
+					setNotice(null);
+				} catch (error) {
+					setState((current) => ({ ...current, saving: false }));
+					setNotice(error.message);
+				}
+			};
+			const dirty = JSON.stringify(rows) !== JSON.stringify(state.allowedModels);
+			const nameOf = (entry) => state.models.find((model) => keyOf(model) === keyOf(entry))?.name ?? entry.model;
+			return el("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+				el("div", { style: { color: "var(--dsw-alias-label-primary)", fontSize: "13px", lineHeight: "20px" } }, t("settings.allowedModels")),
+				el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } }, t("settings.allowedModelsHint")),
+				notice === null ? null : el("div", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: "12px" } }, notice),
+				state.loading
+					? el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" } }, t("panel.loading"))
+					: el("div", { style: { display: "flex", flexDirection: "column", gap: "6px" } },
+						rows.length === 0
+							? el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" } }, t("settings.allowedModelsEmpty"))
+							: el("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+								rows.map((entry) => el("div", {
+									key: keyOf(entry),
+									style: { display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }
+								},
+									el("span", { style: { color: "var(--dsw-alias-label-secondary)", wordBreak: "break-all" } },
+										`${nameOf(entry)} — ${entry.provider}/${entry.model}`),
+									el("span", { style: { marginLeft: "auto" } },
+										button(t("settings.remove"), () => remove(keyOf(entry)), { compact: true }))))),
+						el("div", { style: { display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" } },
+							el("select", {
+								value: picker,
+								style: { ...inputStyle, maxWidth: "360px" },
+								onChange: (event) => setPicker(event.target.value)
+							},
+								el("option", { value: "" }, t("settings.addModelPlaceholder")),
+								state.models
+									.filter((entry) => !present.has(keyOf(entry)))
+									.map((entry) => el("option", { key: keyOf(entry), value: keyOf(entry) },
+										`${entry.name} — ${entry.provider}/${entry.model}`))),
+							button(t("settings.addModel"), () => add(picker), { compact: true, disabled: picker === "" }),
+							button(state.saving ? t("form.saving") : t("settings.save"), save, { compact: true, primary: true, disabled: state.saving || !dirty }))));
 		}
 		/**
 		* Client plugin body: the sidebar row carrying the clock glyph and the main
@@ -747,6 +931,14 @@ window.__ModuleLoader__.load({
 				locale: NS,
 				inject: () => ({ pickDirectory: () => ctx.uiWorkspace.pickDirectory() })
 			}, CronPanel)), "cron-schedule: panel body");
+			// The model allow-list lives on the General settings page, next to the
+			// other deployment-wide choices.
+			ctx.effect(() => ctx.slots.inject("settings.general.item", () => ctx.slots.register({
+				name: "settings.general.item",
+				id: "cron-schedule-models",
+				order: 60,
+				locale: NS
+			}, ModelAllowListRow)), "cron-schedule: settings row");
 		}
 		//#endregion
 		exports.apply = apply;

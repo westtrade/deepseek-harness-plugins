@@ -132,7 +132,11 @@ ok('main panel declares the copy namespace', main?.options.locale === 'cronSched
 ok('sidebar label is a thunk (follows locale)', typeof sidebar?.options.label === 'function');
 ok('sidebar has a component', typeof sidebar?.component === 'function');
 ok('main has a component', typeof main?.component === 'function');
-ok('exactly two registrations', host.registrations.length === 2, String(host.registrations.length));
+// Sidebar row + main panel + the General-settings row.
+ok('exactly three registrations', host.registrations.length === 3, String(host.registrations.length));
+const settingsRow = host.registrations.find((entry) => entry.options.name === 'settings.general.item');
+ok('settings row registered', settingsRow !== undefined);
+ok('settings row has its own id', settingsRow?.options.id === 'cron-schedule-models', settingsRow?.options.id);
 
 // --- the picker bridge the panel is injected with ---
 const injected = main?.options.inject;
@@ -156,6 +160,9 @@ for (const required of [
 	'form.workspace', 'form.browse', 'form.pickExisting', 'form.prompt', 'form.add',
 	'form.save', 'form.saving', 'form.cancel',
 	'form.autoCatchUp', 'form.autoCatchUpHint', 'column.auto', 'column.autoOn', 'column.autoAsk',
+	'form.model', 'form.modelDefault', 'form.modelRestricted', 'column.model',
+	'settings.allowedModels', 'settings.allowedModelsHint', 'settings.allowedModelsEmpty',
+	'settings.addModel', 'settings.addModelPlaceholder', 'settings.remove', 'settings.save',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
 	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable',
 	'missed.title', 'missed.hint', 'missed.run', 'missed.dismiss'
@@ -185,6 +192,20 @@ ok('checkbox starts off for a new job', source.includes('autoCatchUp: false'));
 ok('editor pre-fills the flag from the job', source.includes('autoCatchUp: job.autoCatchUp === true'));
 ok('panel sends the flag to the host', source.includes('autoCatchUp: draft.autoCatchUp === true'));
 ok('table shows the catch-up state', source.includes('column.autoOn') && source.includes('column.autoAsk'));
+
+// --- model picker and the allowed-model list ---
+ok('form has a model dropdown', source.includes('t("form.model")') && source.includes('models: modelChoices'));
+ok('dropdown offers the deployment default', source.includes('t("form.modelDefault")'));
+ok('dropdown lists catalog entries', source.includes('`${entry.name} — ${entry.provider}/${entry.model}`'));
+ok('form sends the picked model', source.includes('model: draft.modelKey === ""'));
+ok('clearing the picker sends null', source.includes('draft.modelKey === "" ? null'));
+ok('editor pre-fills the stored model', source.includes('modelKey: modelKey(job.model)'));
+ok('panel loads the settings route', source.includes('SETTINGS_URL'));
+ok('panel filters choices by the allow-list', source.includes('restricted') && source.includes('settings.allowedModels.some'));
+ok('settings row registered on the General page', source.includes('settings.general.item'));
+ok('settings row saves the list', source.includes('{ allowedModels: rows }'));
+ok('settings row can add and remove entries', source.includes('settings.addModel') && source.includes('settings.remove'));
+ok('table shows the model column', source.includes('column.model'));
 
 // --- editing an existing schedule ---
 ok('panel has an edit button per row', source.includes('t("job.edit")'));

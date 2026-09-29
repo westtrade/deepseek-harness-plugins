@@ -147,6 +147,26 @@ function fakeContext() {
 		 * The fake mirrors that contract so the human-only `autoCatchUp` rule is
 		 * exercised for real instead of being assumed.
 		 */
+		/** The model catalog the plugin reads for its pickers and allow-list checks. */
+		llm: {
+			providers: [
+				{ id: 'router-ai', name: 'RouterAI' },
+				{ id: 'deepseek-official', name: 'DeepSeek' }
+			],
+			listProviders() {
+				return this.providers;
+			},
+			async listModels(provider) {
+				if (provider === 'router-ai') {
+					return [
+						{ id: 'deepseek/deepseek-v4.1-flash', name: 'V4.1 Flash' },
+						{ id: 'xiaomi/mimo-v2.6-pro', name: 'Mimo Pro' }
+					];
+				}
+				if (provider === 'deepseek-official') return [{ id: 'deepseek-flash', name: 'Flash' }];
+				throw new Error(`unknown provider ${provider}`);
+			}
+		},
 		connection: {
 			requestRejection(request) {
 				return request?.headers?.cookie?.includes('dsh-auth-') === true ? undefined : 401;
@@ -245,9 +265,10 @@ try {
 
 	// --- wiring ---
 	ok('jobs route registered', host.routes.has(`exact:/api/cron-schedule/jobs`), [...host.routes.keys()].join(' '));
+	ok('settings route registered', host.routes.has('exact:/api/cron-schedule/settings'), [...host.routes.keys()].join(' '));
 	ok('job prefix route registered', host.routes.has('prefix:/api/cron-schedule/jobs'));
-	ok('five AI tools registered', host.tools.size === 5, [...host.tools.keys()].join(','));
-	for (const toolName of ['cron_list', 'cron_create', 'cron_delete', 'cron_run', 'cron_describe']) {
+	ok('six AI tools registered', host.tools.size === 6, [...host.tools.keys()].join(','));
+	for (const toolName of ['cron_list', 'cron_create', 'cron_delete', 'cron_run', 'cron_models', 'cron_describe']) {
 		ok(`tool ${toolName} present`, host.tools.has(toolName));
 	}
 	ok('scheduler stop effect registered', host.effects.includes('cron-schedule: scheduler stop'));
@@ -275,6 +296,7 @@ try {
 
 	const jobsRoute = host.routes.get('exact:/api/cron-schedule/jobs');
 	const jobRoute = host.routes.get('prefix:/api/cron-schedule/jobs');
+	const settingsRoute = host.routes.get('exact:/api/cron-schedule/settings');
 
 	// --- empty list ---
 	const empty = await call(jobsRoute.handler, 'GET', '/api/cron-schedule/jobs');
@@ -302,6 +324,72 @@ try {
 	ok('job persisted to disk', JSON.parse(await readFile(storePath, 'utf8')).jobs.length === 1);
 	ok('a new job asks before catching up', job.autoCatchUp === false, String(job.autoCatchUp));
 
+	// --- the model catalog and the allow-list ---
+	const catalog = await call(settingsRoute.handler, 'GET', '/api/cron-schedule/settings');
+	ok('settings GET 200', catalog.status === 200, JSON.stringify(catalog.body).slice(0, 160));
+	ok('catalog lists every routed model', catalog.body.models.length === 3, String(catalog.body.models.length));
+	ok('catalog carries provider and model ids', catalog.body.models.some((m) => m.provider === 'router-ai' && m.model === 'deepseek/deepseek-v4.1-flash'));
+	ok('catalog carries display names', catalog.body.models.every((m) => typeof m.name === 'string' && m.name.length > 0));
+	ok('catalog reports the deployment default', catalog.body.default?.model === 'deepseek-flash', JSON.stringify(catalog.body.default));
+	ok('no restriction by default', Array.isArray(catalog.body.allowedModels) && catalog.body.allowedModels.length === 0);
+	// A person narrows the list; the panel sends the cookie.
+	const narrowed = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
+		allowedModels: [{ provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }]
+	}, { trusted: true });
+	ok('a person can set the allow-list', narrowed.status === 200 && narrowed.body.allowedModels.length === 1, JSON.stringify(narrowed.body).slice(0, 160));
+	// The AI must not be able to widen its own policy.
+	const widened = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
+		allowedModels: [{ provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }, { provider: 'router-ai', model: 'xiaomi/mimo-v2.6-pro' }]
+	});
+	ok('an untrusted caller cannot change the allow-list', widened.status === 400 && widened.body.field === 'allowedModels', `${widened.status} ${JSON.stringify(widened.body)}`);
+	// A typo must not become a policy that silently never matches.
+	const unknown = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
+		allowedModels: [{ provider: 'router-ai', model: 'nope/does-not-exist' }]
+	}, { trusted: true });
+	ok('an unknown model is refused', unknown.status === 400 && unknown.body.field === 'allowedModels', JSON.stringify(unknown.body));
+
+	// With the list in force, a job may only name an allowed model.
+	const outside = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Запрещённая модель', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		model: { provider: 'router-ai', model: 'xiaomi/mimo-v2.6-pro' }
+	}, { trusted: true });
+	ok('a job outside the allow-list is refused', outside.status === 400 && outside.body.field === 'model', `${outside.status} ${JSON.stringify(outside.body)}`);
+	const inside = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Разрешённая модель', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		model: { provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }
+	}, { trusted: true });
+	ok('a job inside the allow-list is accepted', inside.status === 201 && inside.body.job.model?.model === 'deepseek/deepseek-v4.1-flash', JSON.stringify(inside.body).slice(0, 200));
+	// The AI's own tool obeys the same policy.
+	const toolOutside = await host.tools.get('cron_create').execute({
+		name: 'ИИ запрещённая', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		model: { provider: 'router-ai', model: 'xiaomi/mimo-v2.6-pro' }
+	}, { signal: new AbortController().signal }).then(() => undefined, (error) => error);
+	ok('the AI tool refuses a model outside the list', toolOutside instanceof Error, String(toolOutside?.message ?? 'accepted'));
+	const modelsTool = await host.tools.get('cron_models').execute({}, { signal: new AbortController().signal });
+	ok('cron_models reports the restriction', modelsTool.restricted === true);
+	ok('cron_models lists only allowed entries', modelsTool.models.length === 1 && modelsTool.models[0].model === 'deepseek/deepseek-v4.1-flash', JSON.stringify(modelsTool.models));
+	// Clearing the list re-opens every routed model.
+	const cleared = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', { allowedModels: [] }, { trusted: true });
+	ok('clearing the list succeeds', cleared.status === 200 && cleared.body.allowedModels.length === 0);
+	const unrestrictedModels = await host.tools.get('cron_models').execute({}, { signal: new AbortController().signal });
+	ok('with no list every model is offered', unrestrictedModels.restricted === false && unrestrictedModels.models.length === 3, String(unrestrictedModels.models.length));
+	// Even with no allow-list, a model this deployment cannot route is refused:
+	// accepting it would only fail later, when the job fires.
+	const unroutable = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Несуществующая модель', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		model: { provider: 'router-ai', model: 'nope/does-not-exist' }
+	}, { trusted: true });
+	ok('an unroutable model is refused without a list', unroutable.status === 400 && unroutable.body.field === 'model', `${unroutable.status} ${JSON.stringify(unroutable.body)}`);
+	const unknownProvider = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Несуществующий провайдер', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		model: { provider: 'no-such-provider', model: 'deepseek-flash' }
+	}, { trusted: true });
+	ok('an unroutable provider is refused without a list', unknownProvider.status === 400 && unknownProvider.body.field === 'model', `${unknownProvider.status} ${JSON.stringify(unknownProvider.body)}`);
+	// A job with no model keeps meaning "the deployment default".
+	const noModel = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Без модели', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p'
+	}, { trusted: true });
+	ok('a job without a model stores none', noModel.status === 201 && noModel.body.job.model === null, JSON.stringify(noModel.body.job.model));
 	// --- the catch-up flag is human-only ---
 	// The person at the panel ticks the box: the browser cookie rides along, so
 	// the Host accepts it.

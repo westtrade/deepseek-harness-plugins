@@ -27,7 +27,7 @@
 // otherwise a reload would pick up a new index.js while still running the old
 // store/scheduler/cron code.
 const REV = new URL(import.meta.url).search;
-const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, normalizeJob, openJobStore } = await import('./store.js' + REV);
+const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, normalizeAllowedModels, normalizeJob, openJobStore } = await import('./store.js' + REV);
 const { createScheduler } = await import('./scheduler.js' + REV);
 const { runJob } = await import('./runner.js' + REV);
 const { describeCron, upcoming } = await import('./cron.js' + REV);
@@ -41,10 +41,13 @@ export const name = 'cron-schedule';
  * so the human-only `autoCatchUp` flag can be attributed to a real browser
  * session (see {@link makeTrustCheck}).
  */
-export const inject = ['webServer', 'connection', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle'];
+export const inject = ['webServer', 'connection', 'llm', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle'];
 
 /** Exact route answering the job list and accepting mutations. */
 export const JOBS_PATH = '/api/cron-schedule/jobs';
+
+/** Exact route for the plugin settings (currently the model allow-list). */
+export const SETTINGS_PATH = '/api/cron-schedule/settings';
 
 /**
  * Prefix under which one job is addressed (`/api/cron-schedule/jobs/<id>`).
@@ -114,6 +117,9 @@ export async function apply(ctx, config = {}) {
 		workspaceRegistry: ctx.workspaceRegistry,
 		agentPresets: ctx.agentPresets,
 		sessionTitle: ctx.sessionTitle,
+		// The model catalog, for the panel's model pickers and for validating the
+		// allow-list against models this deployment can really route.
+		llm: ctx.llm,
 		// Held for the human-only `autoCatchUp` attribution, which runs inside a
 		// request handler where the raw ctx can no longer resolve services.
 		connection: ctx.connection,
@@ -170,6 +176,64 @@ export async function apply(ctx, config = {}) {
 			ctx.logger.warn(`cron-schedule: could not attribute the request: ${String(error?.message ?? error)}`);
 			return { trusted: false };
 		}
+	}
+
+	/**
+	 * Every model this deployment can actually route, as `{ provider, model,
+	 * name }`, grouped by provider. Read from the LLM service, so the list is the
+	 * deployment's real catalog rather than a hard-coded guess.
+	 *
+	 * @returns `{ models, failures }` — a provider that cannot list its catalog is
+	 *   reported instead of failing the whole call.
+	 */
+	async function modelCatalog() {
+		const models = [];
+		const failures = [];
+		let providers = [];
+		try {
+			providers = runtime.llm.listProviders();
+		} catch (error) {
+			return { models, failures: [{ provider: '(all)', message: String(error?.message ?? error) }] };
+		}
+		for (const provider of providers) {
+			try {
+				const listed = await runtime.llm.listModels(provider.id);
+				for (const entry of listed) {
+					models.push({
+						provider: provider.id,
+						model: entry.id,
+						name: entry.name,
+						providerName: provider.name
+					});
+				}
+			} catch (error) {
+				failures.push({ provider: provider.id, message: String(error?.message ?? error) });
+			}
+		}
+		return { models, failures };
+	}
+
+	/** The current allow-list, as the store holds it. */
+	const allowedModels = () => store.settings().allowedModels;
+
+	/**
+	 * The catalog as a flat `{ provider, model }` list, for validation.
+	 *
+	 * Cached briefly: a burst of panel saves should not re-list every provider,
+	 * but a stale entry is harmless because the check only rejects typos.
+	 */
+	let catalogCache = { at: 0, entries: [] };
+	async function routableEntries() {
+		if (Date.now() - catalogCache.at < 30000 && catalogCache.entries.length > 0) return catalogCache.entries;
+		try {
+			const catalog = await modelCatalog();
+			if (catalog.models.length > 0) {
+				catalogCache = { at: Date.now(), entries: catalog.models.map((entry) => ({ provider: entry.provider, model: entry.model })) };
+			}
+		} catch (error) {
+			ctx.logger.warn(`cron-schedule: could not read the model catalog: ${String(error?.message ?? error)}`);
+		}
+		return catalogCache.entries;
 	}
 
 	/** Read the request body as JSON, or throw a JobInputError. */
@@ -254,7 +318,7 @@ export async function apply(ctx, config = {}) {
 				sendJson(res, 200, { ok: true, jobs: store.list().map(view) });
 				return;
 			}
-			const job = applyAutoCatchUp(normalizeJob(body, undefined, Date.now()), body, trust(req));
+			const job = applyAutoCatchUp(normalizeJob(body, undefined, Date.now(), allowedModels(), await routableEntries()), body, trust(req));
 			const stored = await store.put(job);
 			await scheduler.reschedule(stored.id);
 			sendJson(res, 201, { ok: true, job: view(store.get(stored.id)) });
@@ -312,7 +376,7 @@ export async function apply(ctx, config = {}) {
 			const body = await readJson(req);
 			// `normalizeJob` fills every omitted field from the existing record, so
 			// both a full edit and a bare `{enabled:false}` toggle work here.
-			const next = applyAutoCatchUp(normalizeJob(body, existing, Date.now()), body, trust(req));
+			const next = applyAutoCatchUp(normalizeJob(body, existing, Date.now(), allowedModels(), await routableEntries()), body, trust(req));
 			await store.put({ ...next, id: existing.id, createdAt: existing.createdAt });
 			await scheduler.reschedule(id);
 			sendJson(res, 200, { ok: true, job: view(store.get(id)) });
@@ -326,6 +390,64 @@ export async function apply(ctx, config = {}) {
 		}
 	};
 
+	/**
+	 * The settings route: read the model allow-list and the routable catalog, and
+	 * write the allow-list.
+	 *
+	 * Only a person may change the list, for the same reason the catch-up switch
+	 * is guarded: it is the policy that constrains what the AI is allowed to
+	 * schedule, so the AI must not be able to widen it. Reading stays open, since
+	 * the panel needs the catalog to render its pickers.
+	 */
+	const settingsHandler = async (req, res) => {
+		try {
+			if (req.method === 'GET' || req.method === 'HEAD') {
+				const catalog = await modelCatalog();
+				let fallback = null;
+				try {
+					const selection = runtime.agentDefaultModel.currentSelection();
+					fallback = { provider: selection.provider, model: selection.model };
+				} catch {
+					fallback = null;
+				}
+				sendJson(res, 200, {
+					allowedModels: allowedModels(),
+					models: catalog.models,
+					failures: catalog.failures,
+					default: fallback
+				});
+				return;
+			}
+			if (req.method !== 'POST') {
+				res.writeHead(405, { allow: 'GET, HEAD, POST' });
+				res.end();
+				return;
+			}
+			if (trust(req).trusted !== true) {
+				throw new JobInputError('the allowed-model list can only be changed by a person in the Web panel', 'allowedModels');
+			}
+			const body = await readJson(req);
+			const catalog = await modelCatalog();
+			const available = catalog.models.map((entry) => ({ provider: entry.provider, model: entry.model }));
+			const next = normalizeAllowedModels(body.allowedModels, available);
+			await store.setSettings({ allowedModels: next });
+			revision += 1;
+			sendJson(res, 200, { ok: true, allowedModels: allowedModels() });
+		} catch (error) {
+			if (error instanceof JobInputError) {
+				sendJson(res, 400, { error: error.message, field: error.field });
+				return;
+			}
+			ctx.logger.error(error);
+			sendJson(res, 500, { error: String(error?.message ?? error) });
+		}
+	};
+
+	ctx.effect(() => ctx.webServer.register({
+		kind: 'exact',
+		path: SETTINGS_PATH,
+		handler: settingsHandler
+	}), 'cron-schedule: settings route');
 	ctx.effect(() => ctx.webServer.register({
 		kind: 'exact',
 		path: JOBS_PATH,
@@ -337,7 +459,7 @@ export async function apply(ctx, config = {}) {
 		handler: jobHandler
 	}), 'cron-schedule: job route');
 
-	registerTools(ctx, { store, scheduler, locale, toolJob });
+	registerTools(ctx, { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime });
 }
 
 /**
@@ -349,7 +471,7 @@ export async function apply(ctx, config = {}) {
  * @param deps - store, scheduler, locale, and the view helper.
  */
 function registerTools(ctx, deps) {
-	const { store, scheduler, locale, toolJob } = deps;
+	const { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime } = deps;
 	/** One text block. */
 	const text = (value) => [{ type: 'text', text: value }];
 	/** A tool definition in the shape the registry validates. */
@@ -368,6 +490,10 @@ function registerTools(ctx, deps) {
 				workspacePath: { type: 'string', required: true },
 				prompt: { type: 'string', required: true },
 				enabled: { type: 'boolean', required: true },
+				model: { type: 'object', additionalProperties: false, properties: {
+					provider: { type: 'string', required: true },
+					model: { type: 'string', required: true }
+				} },
 				nextRunAt: { type: 'number' },
 				lastRunAt: { type: 'number' },
 				lastStatus: { type: 'string' },
@@ -407,14 +533,23 @@ function registerTools(ctx, deps) {
 
 		toolCtx.tools.register(tool({
 			name: 'cron_create',
-			description: 'Create a cron schedule. At each due time the harness starts a NEW chat in the given workspace directory and sends it the prompt as the first user message. Use cron_describe first when unsure about an expression.',
+			description: 'Create a cron schedule. At each due time the harness starts a NEW chat in the given workspace directory and sends it the prompt as the first user message. Use cron_describe first when unsure about an expression, and cron_models to see which models you may pick.',
 			parameters: {
 				name: { type: 'string', required: true, description: 'Short human label for the schedule.' },
 				expression: { type: 'string', required: true, description: 'Standard 5-field cron expression in the job time zone, e.g. "0 9 * * 1-5" for 09:00 on weekdays.' },
 				workspacePath: { type: 'string', required: true, description: 'Absolute directory the new chat runs in. It is created when missing.' },
 				prompt: { type: 'string', required: true, description: 'The task text delivered to the AI as the first message of each new chat.' },
 				timeZone: { type: 'string', description: 'IANA time zone for the expression, e.g. "Europe/Moscow". Defaults to UTC.' },
-				enabled: { type: 'boolean', description: 'Whether the schedule is active. Defaults to true.' }
+				enabled: { type: 'boolean', description: 'Whether the schedule is active. Defaults to true.' },
+				model: {
+					type: 'object',
+					additionalProperties: false,
+					description: 'Model the scheduled chat runs on. Call cron_models first and pick an entry from that list; omit to use the deployment default.',
+					properties: {
+						provider: { type: 'string', required: true, description: 'Provider id, exactly as cron_models reports it.' },
+						model: { type: 'string', required: true, description: 'Model id, exactly as cron_models reports it.' }
+					}
+				}
 			},
 			output: {
 				schema: {
@@ -425,10 +560,12 @@ function registerTools(ctx, deps) {
 						name: { type: 'string', required: true },
 						expression: { type: 'string', required: true },
 						workspacePath: { type: 'string', required: true },
-						nextRunAt: { type: 'number' }
+						nextRunAt: { type: 'number' },
+						provider: { type: 'string' },
+						model: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}.`)
+				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}.`)
 			},
 			async execute(args, exec) {
 				const source = { ...args };
@@ -444,7 +581,9 @@ function registerTools(ctx, deps) {
 					if (typeof cwd !== 'string' || cwd === '') throw new Error('cron_create needs workspacePath, and this session has no working directory to default to');
 					source.workspacePath = cwd;
 				}
-				const job = normalizeJob(source, undefined, Date.now());
+				// The person's allow-list is the policy for AI-created jobs too: a
+				// model outside it is refused here as well as on the HTTP route.
+				const job = normalizeJob(source, undefined, Date.now(), allowedModels(), await routableEntries());
 				const stored = await store.put(job);
 				await scheduler.reschedule(stored.id);
 				const fresh = store.get(stored.id);
@@ -453,7 +592,8 @@ function registerTools(ctx, deps) {
 					name: fresh.name,
 					expression: fresh.expression,
 					workspacePath: fresh.workspacePath,
-					nextRunAt: fresh.nextRunAt
+					nextRunAt: fresh.nextRunAt,
+					...(fresh.model === undefined ? {} : { provider: fresh.model.provider, model: fresh.model.model })
 				};
 			}
 		}));
@@ -504,6 +644,66 @@ function registerTools(ctx, deps) {
 				const id = String(args.id);
 				const started = await scheduler.runNow(id);
 				return { started, id };
+			}
+		}));
+
+		toolCtx.tools.register(tool({
+			name: 'cron_models',
+			description: 'List the models you may schedule on. When the person configured an allowed-model list, only those entries are accepted by cron_create; otherwise every model this deployment routes is listed and the deployment default is used when you omit the model.',
+			parameters: {},
+			output: {
+				schema: {
+					type: 'object',
+					additionalProperties: false,
+					properties: {
+						restricted: { type: 'boolean', required: true },
+						models: {
+							type: 'array',
+							required: true,
+							items: {
+								type: 'object',
+								additionalProperties: false,
+								properties: {
+									provider: { type: 'string', required: true },
+									model: { type: 'string', required: true },
+									name: { type: 'string', required: true }
+								}
+							}
+						},
+						defaultProvider: { type: 'string' },
+						defaultModel: { type: 'string' }
+					}
+				},
+				render: (_args, value) => text(value.models.length === 0
+					? 'No model is available to schedule on in this deployment.'
+					: `${value.restricted ? 'You may only schedule these models' : 'Any of these models may be scheduled'}:\n${value.models.map((entry) => `  ${entry.provider}/${entry.model}  (${entry.name})`).join('\n')}${value.defaultModel === undefined ? '' : `\nDefault when omitted: ${value.defaultProvider}/${value.defaultModel}`}`)
+			},
+			async execute() {
+				const allowed = allowedModels();
+				const restricted = allowed.length > 0;
+				const catalog = await modelCatalog();
+				const byKey = new Map(catalog.models.map((entry) => [`${entry.provider}\u0000${entry.model}`, entry]));
+				const models = (restricted ? allowed : catalog.models.map((entry) => ({ provider: entry.provider, model: entry.model })))
+					.map((entry) => {
+						const found = byKey.get(`${entry.provider}\u0000${entry.model}`);
+						return { provider: entry.provider, model: entry.model, name: found?.name ?? entry.model };
+					});
+				let defaultProvider;
+				let defaultModel;
+				try {
+					const selection = runtime.agentDefaultModel.currentSelection();
+					defaultProvider = selection.provider;
+					defaultModel = selection.model;
+				} catch {
+					defaultProvider = undefined;
+					defaultModel = undefined;
+				}
+				return {
+					restricted,
+					models,
+					...(defaultProvider === undefined ? {} : { defaultProvider }),
+					...(defaultModel === undefined ? {} : { defaultModel })
+				};
 			}
 		}));
 

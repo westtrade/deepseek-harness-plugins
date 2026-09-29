@@ -78,8 +78,21 @@ async function defaultPresetId(runtime) {
 	}
 }
 
-/** Model/provider selection for a new scheduled session. */
-function defaultAgentOptions(runtime) {
+/**
+ * Model/provider selection for a new scheduled session.
+ *
+ * A job that names a model runs on exactly that route; otherwise the
+ * deployment's current default is used, so an unconfigured job follows the
+ * default when it changes.
+ *
+ * @param runtime - resolved services.
+ * @param job - the stored job record.
+ * @returns `{ provider, model }`, or undefined when nothing could be resolved.
+ */
+function agentOptionsFor(runtime, job) {
+	if (job !== undefined && job !== null && job.model !== undefined && job.model !== null) {
+		return { provider: job.model.provider, model: job.model.model };
+	}
 	try {
 		const selection = runtime.agentDefaultModel.currentSelection();
 		return { provider: selection.provider, model: selection.model };
@@ -110,7 +123,7 @@ export async function runJob(runtime, job, options = {}) {
 	signal?.throwIfAborted();
 	const sessionId = `${SCHEDULED_SESSION_PREFIX}-${job.id.slice(0, 8)}-${now.toString(36)}`;
 	const presetId = await defaultPresetId(runtime);
-	const agentOptions = defaultAgentOptions(runtime);
+	const agentOptions = agentOptionsFor(runtime, job);
 	const handle = await runtime.agents.create({
 		sessionId,
 		signal,
