@@ -223,6 +223,8 @@ ok('panel loads the chat list', source.includes('CHATS_URL') && source.includes(
 ok('table shows the chat column', source.includes('column.chat'));
 // --- the folder select and the folder-scoped chat list ---
 ok('folder select reflects the current directory', source.includes('some((workspace) => workspace.path === draft.workspacePath) ? draft.workspacePath : ""'));
+ok('folder options show the name only, not the path', source.includes('? workspace.title : workspace.path'));
+ok('folder options no longer append the path', !source.includes('${workspace.title} — ${workspace.path}'));
 ok('folder select no longer pins value to empty', !source.includes('value: "",\n\t\t\t\t\t\tstyle: { ...inputStyle, minWidth: "220px" }'));
 ok('chat list is re-fetched per folder', source.includes('CHATS_URL}?cwd=') && source.includes('encodeURIComponent(cwd)'));
 ok('chat list narrows to the chosen folder', source.includes('const reusableChats = scopedChats ?? chats ?? []'));

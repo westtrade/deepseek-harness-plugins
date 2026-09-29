@@ -701,6 +701,9 @@ window.__ModuleLoader__.load({
 					// selected instead of snapping back to the placeholder. A path
 					// typed by hand simply has no matching option, which reads as
 					// the placeholder while the text field below keeps the value.
+					// The option label is the workspace name only: the full path is
+					// already visible in the field below, so repeating it here only
+					// widens the control and truncates the list.
 					label(t("form.pickExisting"), el("select", {
 						value: (workspaces ?? []).some((workspace) => workspace.path === draft.workspacePath) ? draft.workspacePath : "",
 						style: { ...inputStyle, minWidth: "220px" },
@@ -712,7 +715,7 @@ window.__ModuleLoader__.load({
 						(workspaces ?? []).map((workspace) => el("option", {
 							key: workspace.id ?? workspace.path,
 							value: workspace.path
-						}, workspace.title === undefined || workspace.title === "" ? workspace.path : `${workspace.title} — ${workspace.path}`)))),
+						}, typeof workspace.title === "string" && workspace.title !== "" ? workspace.title : workspace.path)))),
 					el("div", { style: { flex: 1, minWidth: "240px" } },
 						label(t("form.workspace"), el("div", { style: { display: "flex", gap: "6px" } },
 							el("input", {
