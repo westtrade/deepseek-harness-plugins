@@ -15,6 +15,7 @@ import {
 	appendRun,
 	defaultStorePath,
 	JobInputError,
+	jobView,
 	MAX_RUN_HISTORY,
 	normalizeJob,
 	openJobStore,
@@ -246,6 +247,79 @@ try {
 	await schedStore.update(dueJob.id, (job) => ({ ...job, missed: [1, 2, 3] }));
 	await scheduler.dismissMissed(dueJob.id);
 	ok('dismissMissed clears the list', schedStore.get(dueJob.id).missed.length === 0);
+
+	// --- autoCatchUp: replay after a restart, but only when the box is ticked ---
+	// Both jobs are given the same overdue instant; only the flagged one may run
+	// on start, and the unflagged one must keep its missed list for the panel.
+	const catchDir = await mkdtemp(path.join(tmpdir(), 'cron-catch-'));
+	try {
+		const catchFile = path.join(catchDir, 'cron.json');
+		const catchStore = await openJobStore({ file: catchFile });
+		const overdue = NOW - 2 * 3600e3;
+		const flagged = { ...normalizeJob({ name: 'Догон', expression: '0 * * * *', timeZone: 'UTC', workspacePath: dir, prompt: 'p' }, undefined, NOW), id: 'flagged', nextRunAt: overdue, autoCatchUp: true };
+		const asking = { ...normalizeJob({ name: 'Спросит', expression: '0 * * * *', timeZone: 'UTC', workspacePath: dir, prompt: 'p' }, undefined, NOW), id: 'asking', nextRunAt: overdue, autoCatchUp: false };
+		await catchStore.put(flagged);
+		await catchStore.put(asking);
+		const launched = [];
+		const catchScheduler = createScheduler({
+			store: catchStore,
+			now: () => NOW,
+			logger: { info: () => {}, warn: () => {} },
+			setTimer: () => ({ unref() {} }),
+			clearTimer: () => {},
+			run: async (job) => {
+				launched.push(job.id);
+				return { sessionId: `session-cron-${job.id}` };
+			}
+		});
+		await catchScheduler.start();
+		await new Promise((resolve) => setImmediate(resolve));
+		ok('a flagged job is caught up on start', launched.includes('flagged'), JSON.stringify(launched));
+		ok('an unflagged job is NOT caught up', !launched.includes('asking'), JSON.stringify(launched));
+		ok('the flagged job was launched exactly once', launched.filter((id) => id === 'flagged').length === 1);
+		ok('the catch-up ran the task, not the missed replay', catchStore.get('flagged').lastStatus === 'succeeded' || catchStore.get('flagged').lastStatus === 'started', String(catchStore.get('flagged').lastStatus));
+		ok('the flagged job has no pending missed list left', catchStore.get('flagged').missed.length === 0, JSON.stringify(catchStore.get('flagged').missed));
+		ok('the unflagged job keeps its missed list for the panel', catchStore.get('asking').missed.length > 0, JSON.stringify(catchStore.get('asking').missed));
+		ok('the unflagged job did not run', catchStore.get('asking').lastStatus === undefined, String(catchStore.get('asking').lastStatus));
+		await catchScheduler.stop();
+
+		// A flagged job with nothing missed must not fire spuriously at start.
+		const quietStore = await openJobStore({ file: path.join(catchDir, 'quiet.json') });
+		const quiet = { ...normalizeJob({ name: 'Тихо', expression: '0 * * * *', timeZone: 'UTC', workspacePath: dir, prompt: 'p' }, undefined, NOW), id: 'quiet', nextRunAt: NOW + 3600e3, autoCatchUp: true };
+		await quietStore.put(quiet);
+		const quietLaunched = [];
+		const quietScheduler = createScheduler({
+			store: quietStore,
+			now: () => NOW,
+			logger: { info: () => {}, warn: () => {} },
+			setTimer: () => ({ unref() {} }),
+			clearTimer: () => {},
+			run: async (job) => {
+				quietLaunched.push(job.id);
+				return {};
+			}
+		});
+		await quietScheduler.start();
+		ok('a flagged job with no downtime does not fire', quietLaunched.length === 0, JSON.stringify(quietLaunched));
+		await quietScheduler.stop();
+	} finally {
+		await rm(catchDir, { recursive: true, force: true });
+	}
+
+	// The flag survives a round trip through the store file.
+	const flagDir = await mkdtemp(path.join(tmpdir(), 'cron-flag-'));
+	try {
+		const flagFile = path.join(flagDir, 'cron.json');
+		const flagStore = await openJobStore({ file: flagFile });
+		await flagStore.put({ ...dueJob, id: 'flag', autoCatchUp: true });
+		await flagStore.put({ ...dueJob, id: 'noflag', autoCatchUp: false });
+		const reopened = await openJobStore({ file: flagFile });
+		ok('the flag round-trips on', reopened.get('flag').autoCatchUp === true);
+		ok('the flag round-trips off', reopened.get('noflag').autoCatchUp === false);
+		ok('view exposes the flag', jobView(reopened.get('flag')).autoCatchUp === true && jobView(reopened.get('noflag')).autoCatchUp === false);
+	} finally {
+		await rm(flagDir, { recursive: true, force: true });
+	}
 
 	await scheduler.stop();
 	await failing.stop();

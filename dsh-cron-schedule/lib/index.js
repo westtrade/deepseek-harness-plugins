@@ -27,7 +27,7 @@
 // otherwise a reload would pick up a new index.js while still running the old
 // store/scheduler/cron code.
 const REV = new URL(import.meta.url).search;
-const { defaultStorePath, jobView, JobInputError, normalizeJob, openJobStore } = await import('./store.js' + REV);
+const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, normalizeJob, openJobStore } = await import('./store.js' + REV);
 const { createScheduler } = await import('./scheduler.js' + REV);
 const { runJob } = await import('./runner.js' + REV);
 const { describeCron, upcoming } = await import('./cron.js' + REV);
@@ -35,8 +35,13 @@ const { describeCron, upcoming } = await import('./cron.js' + REV);
 /** Cordis service name for this plugin. */
 export const name = 'cron-schedule';
 
-/** Services required: the Web server for the panel's route, the rest to run a chat. */
-export const inject = ['webServer', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle'];
+/**
+ * Services required: the Web server for the panel's route, the rest to run a
+ * chat. `connection` is the composition's browser-auth carrier and is declared
+ * so the human-only `autoCatchUp` flag can be attributed to a real browser
+ * session (see {@link makeTrustCheck}).
+ */
+export const inject = ['webServer', 'connection', 'agents', 'agentDefaultModel', 'workspaceRegistry', 'agentPresets', 'sessionTitle'];
 
 /** Exact route answering the job list and accepting mutations. */
 export const JOBS_PATH = '/api/cron-schedule/jobs';
@@ -109,6 +114,9 @@ export async function apply(ctx, config = {}) {
 		workspaceRegistry: ctx.workspaceRegistry,
 		agentPresets: ctx.agentPresets,
 		sessionTitle: ctx.sessionTitle,
+		// Held for the human-only `autoCatchUp` attribution, which runs inside a
+		// request handler where the raw ctx can no longer resolve services.
+		connection: ctx.connection,
 		logger: ctx.logger
 	};
 	/** Broadcast hook: bumped after every mutation so the panel can poll cheaply. */
@@ -129,6 +137,39 @@ export async function apply(ctx, config = {}) {
 	if (config.enabled !== false) {
 		await store.flush();
 		await scheduler.start();
+	}
+
+	/**
+	 * Decide whether one request comes from a real browser session — i.e. from
+	 * the person driving the Web panel.
+	 *
+	 * This is the only thing standing between the AI and the `autoCatchUp` flag,
+	 * so it does not trust the request body, a header the caller could set, or
+	 * which of our own routes was used. It asks the composition's `connection`
+	 * service, whose `requestRejection` applies the Host/Origin fence plus the
+	 * signed browser cookie issued at login:
+	 *
+	 * - `undefined` means the request passed both — a human at the GUI.
+	 * - a status code (401/403) means it did not — the model's own tools, a
+	 *   `curl` from a shell tool, a script, or a LAN caller.
+	 *
+	 * When no `connection` service exists (a headless composition), nothing is
+	 * trusted, so the flag can never be raised there either.
+	 *
+	 * @param req - the incoming request.
+	 * @returns `{ trusted }` describing the caller.
+	 */
+	function trust(req) {
+		const connection = runtime.connection;
+		if (connection === undefined || connection === null || typeof connection.requestRejection !== 'function') {
+			return { trusted: false };
+		}
+		try {
+			return { trusted: connection.requestRejection(req) === undefined };
+		} catch (error) {
+			ctx.logger.warn(`cron-schedule: could not attribute the request: ${String(error?.message ?? error)}`);
+			return { trusted: false };
+		}
 	}
 
 	/** Read the request body as JSON, or throw a JobInputError. */
@@ -213,7 +254,7 @@ export async function apply(ctx, config = {}) {
 				sendJson(res, 200, { ok: true, jobs: store.list().map(view) });
 				return;
 			}
-			const job = normalizeJob(body, undefined, Date.now());
+			const job = applyAutoCatchUp(normalizeJob(body, undefined, Date.now()), body, trust(req));
 			const stored = await store.put(job);
 			await scheduler.reschedule(stored.id);
 			sendJson(res, 201, { ok: true, job: view(store.get(stored.id)) });
@@ -271,7 +312,7 @@ export async function apply(ctx, config = {}) {
 			const body = await readJson(req);
 			// `normalizeJob` fills every omitted field from the existing record, so
 			// both a full edit and a bare `{enabled:false}` toggle work here.
-			const next = normalizeJob(body, existing, Date.now());
+			const next = applyAutoCatchUp(normalizeJob(body, existing, Date.now()), body, trust(req));
 			await store.put({ ...next, id: existing.id, createdAt: existing.createdAt });
 			await scheduler.reschedule(id);
 			sendJson(res, 200, { ok: true, job: view(store.get(id)) });
@@ -391,6 +432,11 @@ function registerTools(ctx, deps) {
 			},
 			async execute(args, exec) {
 				const source = { ...args };
+				// The AI must never be able to schedule an unattended catch-up.
+				// `normalizeJob` already ignores this field on create, but dropping it
+				// here too keeps the rule visible at the tool boundary — and the Host
+				// route rejects the flag outright from any untrusted caller.
+				delete source.autoCatchUp;
 				if (source.workspacePath === undefined || String(source.workspacePath).trim() === '') {
 					// Default to the calling chat's directory so "schedule this here"
 					// works without the model guessing a path.

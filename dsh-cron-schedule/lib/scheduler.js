@@ -156,24 +156,45 @@ export function createScheduler(options) {
 
 	return {
 		/**
-		 * Recompute every job's next run, collecting occurrences that came due
-		 * while the host was down.
+		 * Recompute every job's next run and deal with whatever came due while
+		 * the host was down.
 		 *
-		 * @returns the missed occurrences, per job, for the GUI to offer.
+		 * A job with `autoCatchUp` replays the FIRST missed occurrence once, now,
+		 * and clears the list — the person who ticked the box asked for the task
+		 * to be caught up after a restart. Every other job keeps its missed times
+		 * for the panel to show with Run/Dismiss buttons, which is the default
+		 * "only with the user's permission" behaviour.
+		 *
+		 * @returns the per-job actions taken, for logging.
 		 */
 		async start() {
 			stopped = false;
 			const nowMs = now();
+			/** Jobs to replay once the whole list has been reconciled. */
+			const catchUp = [];
 			for (const job of store.list()) {
 				// reconcileMissed owns the roll-forward: it reads the recorded due
 				// time first (that is how downtime is detected) and only then moves
 				// nextRunAt past `now`. Calling withNextRun first would erase the
 				// evidence and silently drop every missed run.
 				const reconciled = reconcileMissed(job, nowMs);
+				if (reconciled.autoCatchUp === true && (reconciled.missed ?? []).length > 0) {
+					catchUp.push({ id: job.id, name: job.name, count: reconciled.missed.length });
+					// Clearing the list is what stops the banner appearing for a job
+					// that has already been caught up.
+					await store.update(job.id, () => ({ ...reconciled, missed: [] }));
+					continue;
+				}
 				await store.update(job.id, () => reconciled);
 			}
 			onChange();
 			arm();
+			// Launch after the loop so a slow first run cannot delay the timers of
+			// the remaining jobs.
+			for (const entry of catchUp) {
+				logger?.info?.(`cron-schedule: catching up "${entry.name}" after downtime (${entry.count} missed run(s))`);
+				await launch(entry.id, nowMs);
+			}
 		},
 		/** Stop the timer and wait for in-flight runs to settle. */
 		async stop() {

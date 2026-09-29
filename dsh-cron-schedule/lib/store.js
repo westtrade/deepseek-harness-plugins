@@ -93,6 +93,15 @@ export function normalizeJob(input, base, now) {
 		throw error;
 	}
 	const enabled = typeof source.enabled === 'boolean' ? source.enabled : base?.enabled ?? true;
+	/**
+	 * Whether runs missed while DSH was down are replayed automatically at the
+	 * next start instead of waiting for a person to approve them.
+	 *
+	 * This flag is human-only: `applyAutoCatchUp` decides whether a request is
+	 * allowed to set it, and the AI tool never passes it. It is stored on the
+	 * record so the scheduler can act on it after a restart.
+	 */
+	const autoCatchUp = base?.autoCatchUp ?? false;
 	// Reject an expression that can never fire (e.g. `0 0 31 2 *`): saving one
 	// would produce a job the scheduler can only ever skip.
 	if (nextOccurrence(parseCron(expression), now, timeZone) === undefined) {
@@ -106,6 +115,7 @@ export function normalizeJob(input, base, now) {
 		workspacePath,
 		prompt,
 		enabled,
+		autoCatchUp,
 		createdAt: base?.createdAt ?? now,
 		updatedAt: now,
 		...(base?.nextRunAt === undefined ? {} : { nextRunAt: base.nextRunAt }),
@@ -116,6 +126,33 @@ export function normalizeJob(input, base, now) {
 		missed: base?.missed ?? [],
 		runs: base?.runs ?? []
 	};
+}
+
+/**
+ * Apply the human-only `autoCatchUp` flag to a normalized job.
+ *
+ * The flag decides whether missed runs are replayed without asking, so only the
+ * authenticated Web panel may set it. The Host proves that by asking the
+ * `connection` service for a rejection: its Host/Origin fence plus the signed
+ * browser cookie are what separate a person at the GUI from an agent calling the
+ * same route (the AI holds no browser session, and a `curl` from a tool has no
+ * cookie either). Anything else — the model's `cron_create`/`cron_update` tools,
+ * a script, a LAN caller — can never turn it on.
+ *
+ * @param job - the normalized record about to be stored.
+ * @param input - the raw request body.
+ * @param source - `trusted` when the caller passed the browser-auth fence.
+ * @returns the record with the flag applied.
+ * @throws {JobInputError} when an untrusted caller tries to raise the flag.
+ */
+export function applyAutoCatchUp(job, input, source) {
+	const requested = input?.autoCatchUp;
+	if (requested === undefined) return job;
+	if (typeof requested !== 'boolean') throw new JobInputError('autoCatchUp must be a boolean', 'autoCatchUp');
+	if (requested === true && source?.trusted !== true) {
+		throw new JobInputError('autoCatchUp can only be changed by a person in the Web panel', 'autoCatchUp');
+	}
+	return { ...job, autoCatchUp: requested };
 }
 
 /** The GUI/AI-facing view of one job: stored fields plus derived labels. */
@@ -129,6 +166,7 @@ export function jobView(job, locale = 'ru', now = Date.now()) {
 		workspacePath: job.workspacePath,
 		prompt: job.prompt,
 		enabled: job.enabled,
+		autoCatchUp: job.autoCatchUp === true,
 		createdAt: job.createdAt,
 		updatedAt: job.updatedAt,
 		nextRunAt: job.nextRunAt ?? null,
@@ -169,6 +207,7 @@ function reviveJob(raw) {
 		workspacePath: raw.workspacePath,
 		prompt: raw.prompt,
 		enabled: raw.enabled !== false,
+		autoCatchUp: raw.autoCatchUp === true,
 		createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
 		updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : Date.now(),
 		...(Number.isFinite(raw.nextRunAt) ? { nextRunAt: raw.nextRunAt } : {}),

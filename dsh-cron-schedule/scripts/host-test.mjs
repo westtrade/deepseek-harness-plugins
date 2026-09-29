@@ -140,6 +140,18 @@ function fakeContext() {
 		sessionTitle: {
 			rename() {}
 		},
+		/**
+		 * The composition's browser-auth carrier. The real one applies a
+		 * Host/Origin fence plus the signed cookie from login and returns a status
+		 * code when a request fails either; `undefined` means a trusted browser.
+		 * The fake mirrors that contract so the human-only `autoCatchUp` rule is
+		 * exercised for real instead of being assumed.
+		 */
+		connection: {
+			requestRejection(request) {
+				return request?.headers?.cookie?.includes('dsh-auth-') === true ? undefined : 401;
+			}
+		},
 		agents: agentsService,
 		async create(options) {
 			if (agentsService.failWith !== undefined) throw new Error(agentsService.failWith);
@@ -183,11 +195,14 @@ function fakeContext() {
 }
 
 /** A minimal request/response pair over one handler call. */
-async function call(handler, method, url, body) {
+async function call(handler, method, url, body, options) {
 	const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body), 'utf8')];
 	const req = {
 		method,
 		url,
+		// A trusted call carries the browser-auth cookie, exactly as the panel's
+		// own fetch does; the AI's shell or a script sends none.
+		headers: options?.trusted === true ? { cookie: 'dsh-auth-test=1' } : {},
 		async *[Symbol.asyncIterator]() {
 			for (const chunk of chunks) yield chunk;
 		},
@@ -277,7 +292,7 @@ try {
 		timeZone: 'Europe/Moscow',
 		workspacePath: path.join(dir, 'proj'),
 		prompt: 'Собери утренний отчёт'
-	});
+	}, { trusted: true });
 	ok('create 201', created.status === 201, JSON.stringify(created.body).slice(0, 200));
 	const job = created.body.job;
 	ok('create returns id', typeof job.id === 'string' && job.id.length > 0);
@@ -285,6 +300,56 @@ try {
 	ok('create describes in Russian', job.description === 'по будням в 09:00', job.description);
 	ok('create lists upcoming', Array.isArray(job.upcoming) && job.upcoming.length === 3);
 	ok('job persisted to disk', JSON.parse(await readFile(storePath, 'utf8')).jobs.length === 1);
+	ok('a new job asks before catching up', job.autoCatchUp === false, String(job.autoCatchUp));
+
+	// --- the catch-up flag is human-only ---
+	// The person at the panel ticks the box: the browser cookie rides along, so
+	// the Host accepts it.
+	const trustedCatchUp = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Догон человеком',
+		expression: '0 9 * * *',
+		workspacePath: path.join(dir, 'proj'),
+		prompt: 'p',
+		autoCatchUp: true
+	}, { trusted: true });
+	ok('a person can turn the flag on', trustedCatchUp.status === 201 && trustedCatchUp.body.job.autoCatchUp === true, JSON.stringify(trustedCatchUp.body).slice(0, 160));
+	// Everything that is not an authenticated browser is refused: the model's
+	// tools, a curl from a shell tool, a script.
+	for (const [label, options] of [
+		['an untrusted create', undefined],
+		['an untrusted edit', undefined]
+	]) {
+		const refused = label.includes('create')
+			? await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+				name: 'Догон ИИ',
+				expression: '0 9 * * *',
+				workspacePath: path.join(dir, 'proj'),
+				prompt: 'p',
+				autoCatchUp: true
+			}, options)
+			: await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`, { autoCatchUp: true }, options);
+		ok(`${label} is refused`, refused.status === 400 && refused.body.field === 'autoCatchUp', `${refused.status} ${JSON.stringify(refused.body)}`);
+	}
+	// A non-boolean is rejected for everyone, trusted or not.
+	const badFlag = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'x', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p', autoCatchUp: 'yes'
+	}, { trusted: true });
+	ok('a non-boolean flag is refused', badFlag.status === 400 && badFlag.body.field === 'autoCatchUp');
+	// Turning it OFF is harmless, so an untrusted caller may clear it.
+	const clearTry = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Догон ИИ', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p', autoCatchUp: false
+	});
+	ok('an untrusted caller may leave the flag off', clearTry.status === 201 && clearTry.body.job.autoCatchUp === false);
+	// An edit that omits the field must not silently lose it.
+	const keep = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(trustedCatchUp.body.job.id)}`, {
+		name: 'Догон человеком (правка)'
+	}, { trusted: true });
+	ok('an edit keeps the flag when omitted', keep.body.job.autoCatchUp === true, String(keep.body.job.autoCatchUp));
+	// ...and the AI tool cannot set it either.
+	const flaggedByTool = await host.tools.get('cron_create').execute({
+		name: 'ИИ с галкой', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p', autoCatchUp: true
+	}, { signal: new AbortController().signal });
+	ok('the AI tool cannot set the flag', flaggedByTool.id !== undefined && JSON.parse(await readFile(storePath, 'utf8')).jobs.find((entry) => entry.id === flaggedByTool.id)?.autoCatchUp !== true, String(flaggedByTool.id));
 
 	// --- validation errors are 400 with a field ---
 	for (const [label, body] of [
@@ -300,7 +365,7 @@ try {
 
 	// --- list contains the job ---
 	const listed = await call(jobsRoute.handler, 'GET', '/api/cron-schedule/jobs');
-	ok('list has one job', listed.body.jobs.length === 1);
+	ok('list includes the job', listed.body.jobs.some((entry) => entry.id === job.id));
 	ok('list revision advanced', listed.body.revision >= 2);
 
 	// --- expression preview ---
@@ -407,14 +472,14 @@ try {
 	// --- delete ---
 	const removed = await call(jobRoute.handler, 'DELETE', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`);
 	ok('delete 200', removed.status === 200);
-	ok('delete removed it', removed.body.jobs.length === 1 && removed.body.jobs[0].id === staleId);
-	ok('delete persisted', JSON.parse(await readFile(storePath, 'utf8')).jobs.length === 1);
+	ok('delete removed it', !removed.body.jobs.some((entry) => entry.id === job.id) && removed.body.jobs.some((entry) => entry.id === staleId));
+	ok('delete persisted', !JSON.parse(await readFile(storePath, 'utf8')).jobs.some((entry) => entry.id === job.id));
 
 	// --- AI tools behave like the routes ---
 	const listTool = host.tools.get('cron_list');
 	const listValue = await listTool.execute({}, { signal: new AbortController().signal });
 	ok('cron_list returns strict JSON (no nulls)', listValue.jobs.every((entry) => Object.values(entry).every((value) => value !== null)));
-	ok('cron_list sees the surviving job', listValue.jobs.length === 1 && listValue.jobs[0].id === staleId);
+	ok('cron_list sees the surviving job', listValue.jobs.some((entry) => entry.id === staleId) && !listValue.jobs.some((entry) => entry.id === job.id));
 	const rendered = listTool.output.render({}, listValue);
 	ok('cron_list renders text', rendered[0].type === 'text' && rendered[0].text.includes(staleId));
 
@@ -458,8 +523,9 @@ try {
 
 	// --- the store survives a restart ---
 	const { openJobStore: reopen } = await import('../lib/store.js');
+	const restartedOnDisk = JSON.parse(await readFile(storePath, 'utf8')).jobs.length;
 	const restarted = await reopen({ file: storePath });
-	ok('store survives restart', restarted.list().length === 2, `got ${restarted.list().length}`);
+	ok('store survives restart', restarted.list().length === restartedOnDisk, `got ${restarted.list().length} want ${restartedOnDisk}`);
 	ok('restart keeps job fields', restarted.list().every((entry) => typeof entry.prompt === 'string' && entry.timeZone.length > 0));
 
 	// --- every tool's output schema accepts what execute returned ---

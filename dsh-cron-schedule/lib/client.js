@@ -42,6 +42,11 @@ window.__ModuleLoader__.load({
 			"form.cancel": "Cancel",
 			"form.preview": "Next runs: {list}",
 			"form.invalid": "Check the form: {message}",
+			"form.autoCatchUp": "Catch up missed runs after a restart",
+			"form.autoCatchUpHint": "On: runs missed while DSH was off start by themselves at the next launch. Off: they wait for you to press Run. Only a person can change this.",
+			"column.auto": "Catch-up",
+			"column.autoOn": "auto",
+			"column.autoAsk": "ask",
 			"column.name": "Name",
 			"column.when": "When",
 			"column.next": "Next run",
@@ -98,6 +103,11 @@ window.__ModuleLoader__.load({
 			"form.cancel": "取消",
 			"form.preview": "接下来：{list}",
 			"form.invalid": "请检查表单：{message}",
+			"form.autoCatchUp": "重启后自动补跑错过的任务",
+			"form.autoCatchUpHint": "开启：DSH 关闭期间错过的运行会在下次启动时自行开始。关闭：等待你点击「补跑」。只有人可以修改此项。",
+			"column.auto": "补跑",
+			"column.autoOn": "自动",
+			"column.autoAsk": "询问",
 			"column.name": "名称",
 			"column.when": "时间",
 			"column.next": "下次运行",
@@ -311,6 +321,15 @@ window.__ModuleLoader__.load({
 					job.enabled !== true
 						? t("job.off")
 						: next === null ? t("job.never") : next),
+				el("td", {
+					style: {
+						padding: "8px 10px",
+						verticalAlign: "top",
+						fontSize: "12px",
+						color: job.autoCatchUp === true ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)"
+					},
+					title: t("form.autoCatchUpHint")
+				}, job.autoCatchUp === true ? t("column.autoOn") : t("column.autoAsk")),
 				el("td", { style: { padding: "8px 10px", verticalAlign: "top", color: "var(--dsw-alias-label-tertiary)", fontSize: "12px", wordBreak: "break-all" } },
 					job.workspacePath,
 					el("div", { style: { marginTop: "2px" } }, job.prompt.length > 120 ? `${job.prompt.slice(0, 120)}…` : job.prompt)),
@@ -396,7 +415,8 @@ window.__ModuleLoader__.load({
 					name: job.name,
 					timeZone: job.timeZone,
 					workspacePath: job.workspacePath,
-					prompt: job.prompt
+					prompt: job.prompt,
+					autoCatchUp: job.autoCatchUp === true
 				}
 				: {
 					preset: "weekdays9",
@@ -404,7 +424,9 @@ window.__ModuleLoader__.load({
 					name: "",
 					timeZone: localZone(),
 					workspacePath: "",
-					prompt: ""
+					prompt: "",
+					// Off by default: a new schedule asks before replaying downtime.
+					autoCatchUp: false
 				});
 			const [busy, setBusy] = react.useState(false);
 			const [preview, setPreview] = react.useState(null);
@@ -452,7 +474,11 @@ window.__ModuleLoader__.load({
 						expression: draft.expression.trim(),
 						timeZone: draft.timeZone.trim() === "" ? "UTC" : draft.timeZone.trim(),
 						workspacePath: draft.workspacePath.trim(),
-						prompt: draft.prompt
+						prompt: draft.prompt,
+						// Sent only from here: the Host refuses this flag from any
+						// caller that is not an authenticated browser session, so the
+						// panel is the one place it can be turned on.
+						autoCatchUp: draft.autoCatchUp === true
 					};
 					if (editing) {
 						await callHost("POST", `${JOBS_URL}/${encodeURIComponent(job.id)}`, body);
@@ -546,6 +572,24 @@ window.__ModuleLoader__.load({
 					style: { ...inputStyle, resize: "vertical", fontFamily: "inherit" },
 					onChange: (event) => set({ prompt: event.target.value })
 				})),
+				// Human-only switch: the Host rejects this flag from any caller
+				// without an authenticated browser session, so it cannot be set by
+				// the AI, a script, or a curl.
+				el("label", {
+					style: { display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" },
+					title: t("form.autoCatchUpHint")
+				},
+					el("input", {
+						type: "checkbox",
+						checked: draft.autoCatchUp === true,
+						style: { marginTop: "2px", flex: "none", accentColor: "var(--dsw-alias-interactive-bg-primary)" },
+						onChange: (event) => set({ autoCatchUp: event.target.checked })
+					}),
+					el("span", { style: { minWidth: 0 } },
+						el("span", { style: { display: "block", color: "var(--dsw-alias-label-secondary)", fontSize: "13px", lineHeight: "20px" } },
+							t("form.autoCatchUp")),
+						el("span", { style: { display: "block", color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } },
+							t("form.autoCatchUpHint")))),
 				el("div", { style: { display: "flex", gap: "8px" } },
 					button(busy
 						? (editing ? t("form.saving") : t("form.adding"))
@@ -618,7 +662,7 @@ window.__ModuleLoader__.load({
 								: el("div", { style: { border: "1px solid var(--dsw-alias-border-l4)", borderRadius: "12px", overflow: "hidden" } },
 									el("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: "13px" } },
 										el("thead", null, el("tr", { style: { background: "var(--dsw-alias-bg-elevated, transparent)" } },
-											[t("column.name"), t("column.when"), t("column.next"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
+											[t("column.name"), t("column.when"), t("column.next"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
 												key: heading,
 												style: {
 													textAlign: "left",
@@ -641,7 +685,7 @@ window.__ModuleLoader__.load({
 											if (job.id !== editingId) return [row];
 											// The editor renders in place, directly under its own row.
 											return [row, el("tr", { key: `${job.id}-editor` },
-												el("td", { colSpan: 5, style: { padding: "0 10px 12px" } },
+												el("td", { colSpan: 6, style: { padding: "0 10px 12px" } },
 													el(JobForm, {
 														t,
 														pickDirectory,

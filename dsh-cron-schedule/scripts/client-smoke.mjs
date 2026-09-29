@@ -155,6 +155,7 @@ for (const required of [
 	'form.name', 'form.preset', 'form.expression', 'form.timeZone',
 	'form.workspace', 'form.browse', 'form.pickExisting', 'form.prompt', 'form.add',
 	'form.save', 'form.saving', 'form.cancel',
+	'form.autoCatchUp', 'form.autoCatchUpHint', 'column.auto', 'column.autoOn', 'column.autoAsk',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
 	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable',
 	'missed.title', 'missed.hint', 'missed.run', 'missed.dismiss'
@@ -176,6 +177,14 @@ ok('panel has a workspace dropdown', source.includes('form.pickExisting'));
 ok('panel has the OS folder picker button', source.includes('form.browse'));
 ok('panel keeps the host error message', source.includes('payload?.error'));
 ok('panel does not require any non-react package', !/require\((?!["']react["'])/.test(source.replace(/\brequire\("react"\)/g, 'require("react")')) || source.includes('require("react")'));
+
+// --- the human-only catch-up switch ---
+ok('form renders the catch-up checkbox', source.includes('type: "checkbox"'));
+ok('checkbox is bound to the draft flag', source.includes('autoCatchUp: event.target.checked'));
+ok('checkbox starts off for a new job', source.includes('autoCatchUp: false'));
+ok('editor pre-fills the flag from the job', source.includes('autoCatchUp: job.autoCatchUp === true'));
+ok('panel sends the flag to the host', source.includes('autoCatchUp: draft.autoCatchUp === true'));
+ok('table shows the catch-up state', source.includes('column.autoOn') && source.includes('column.autoAsk'));
 
 // --- editing an existing schedule ---
 ok('panel has an edit button per row', source.includes('t("job.edit")'));
