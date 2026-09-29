@@ -401,9 +401,17 @@ export async function openVectorStore(options = {}) {
 /**
  * Render a vector as the instruction block the model reads.
  *
- * The numbering is the whole point of a goals vector: the model is told that
- * goal 1 outranks goal 2, and that lower-priority goals are the ones to drop
- * when the full set cannot be achieved.
+ * Two things travel together here, and both are needed:
+ *
+ * - the vector itself, numbered, because the numbering IS the priority;
+ * - what a goals vector IS, because a model that has only seen a bulleted list
+ *   will treat it as a checklist of equals. The concept is not self-evident: the
+ *   goals describe behaviour under ideal, errorless control, and their order is
+ *   the REVERSE of the order in which they are to be abandoned when the full set
+ *   proves impossible.
+ *
+ * The explanation is deliberately short — this text is re-sent on every step —
+ * so it states the idea and then the rule to act on, and leaves the theory out.
  *
  * @param vector - the vector view or record.
  * @returns the prompt section text, or an empty string for an empty vector.
@@ -413,11 +421,18 @@ export function renderVectorPrompt(vector) {
 	const lines = vector.goals.map((goal, index) => `${String(index + 1)}. ${goal}`);
 	return [
 		`<goals_vector name="${String(vector.name).replaceAll('"', "'")}">`,
-		'You are working to a goals vector: a priority-ordered list of goals. Goal 1 is the most important; each later goal is less important than the one before it.',
+		'You are working to a goals vector: a hierarchy of goals describing the ideal mode of behaviour for the object being controlled — here, for you in this project. The order is the REVERSE of the order of abandonment: these goals are the ones to reach under ideal work, and when the full set cannot be achieved, the LOWEST-priority goals are given up first.',
 		'',
 		lines.join('\n'),
 		'',
-		'Work so that higher-priority goals are achieved first. If the whole set cannot be achieved, achieve the highest-priority goals and drop the lowest-priority ones first — never the other way round. When you report, say explicitly which goals you advanced and which you had to drop.',
+		'Numbering is priority, not sequence:',
+		'- Goal 1 outranks goal 2, which outranks goal 3: a lower number always wins a conflict.',
+		'- Achieve higher-priority goals first; never sacrifice a higher-priority goal for a lower-priority one.',
+		'- If the whole set cannot be achieved, drop the lowest-priority goals first — never the other way round.',
+		'- The same goals in another order are a different vector calling for different work; the order you were given is the instruction.',
+		'- Report which goals you advanced and which you had to drop, and why.',
+		'',
+		'If goals turn out to be mutually exclusive or unachievable, the vector is defective and defective vectors lead to loss of control: do not silently satisfy one half of a contradictory pair, and do not pretend a goal was met. Say which goals conflict, which you chose, and what is left undone; report a real obstacle instead of quietly ignoring it.',
 		'</goals_vector>'
 	].join('\n');
 }

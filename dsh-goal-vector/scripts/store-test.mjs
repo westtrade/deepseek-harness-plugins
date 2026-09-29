@@ -100,7 +100,14 @@ try {
 	const prompt = renderVectorPrompt(reordered);
 	ok('the prompt names the vector', prompt.includes('goals_vector name="Релиз 2.0"'), prompt.slice(0, 80));
 	ok('the prompt numbers goals in priority order', prompt.includes('1. Задокументировать') && prompt.includes('3. Протестировать'));
-	ok('the prompt states the drop order', prompt.includes('drop the lowest-priority ones first'));
+	ok('the prompt states the drop order', prompt.includes('LOWEST-priority goals are given up first'));
+	ok('the prompt explains what a goals vector is', prompt.includes('ideal mode of behaviour'));
+	ok('the prompt states the order is reversed abandonment', prompt.includes('REVERSE of the order of abandonment'));
+	ok('the prompt says numbering is priority, not sequence', prompt.includes('Numbering is priority, not sequence'));
+	ok('the prompt forbids sacrificing a higher-priority goal', prompt.includes('never sacrifice a higher-priority goal'));
+	ok('the prompt warns that order makes a different vector', prompt.includes('another order are a different vector'));
+	ok('the prompt covers defective vectors', prompt.includes('defective') && prompt.includes('loss of control'));
+	ok('the prompt requires reporting what was dropped', prompt.includes('which goals you advanced and which you had to drop'));
 	ok('an empty vector renders nothing', renderVectorPrompt(null) === '' && renderVectorPrompt({ goals: [] }) === '');
 
 	// --- two instances must not clobber each other ---

@@ -391,7 +391,7 @@ function registerTools(ctx, deps) {
 
 		toolCtx.tools.register(tool({
 			name: 'goal_vector_list',
-			description: 'List every goals vector (ВЦ) defined in this deployment, with its goals in priority order. A goals vector is a named priority-ordered list of goals: goal 1 is the most important, and lower-priority goals are the ones to drop first when the whole set cannot be achieved.',
+			description: 'List every goals vector (ВЦ) defined in this deployment, with its goals in priority order. A goals vector describes the ideal mode of behaviour for the object being controlled, built as a hierarchy of particular goals. Its order is the REVERSE of the order in which the goals would be given up: goal 1 is the most important, and the lowest-priority goals are the ones to drop first when the whole set cannot be achieved.',
 			parameters: {},
 			output: {
 				schema: {
@@ -412,7 +412,7 @@ function registerTools(ctx, deps) {
 
 		toolCtx.tools.register(tool({
 			name: 'goal_vector_create',
-			description: 'Create a goals vector (ВЦ): a named, priority-ordered list of goals for the LLM working in a project. Put the most important goal first — the order is the priority, and the last goal is the one to give up first. Call goal_vector_list first to avoid duplicating an existing vector.',
+			description: 'Create a goals vector (ВЦ): a hierarchy of goals for the LLM working in a project, describing the ideal mode of behaviour. The order is the priority, and it is the reverse of the order of abandonment: put the most important goal first, and the goal to give up first last. The same goals in another order are a different vector, so choose the order deliberately. Call goal_vector_list first to avoid duplicating an existing vector.',
 			parameters: {
 				name: { type: 'string', required: true, description: 'Short human label for the vector, e.g. "Выпустить релиз 2.0".' },
 				goals: { type: 'array', required: true, items: { type: 'string' }, description: 'Goals in priority order: index 0 is the most important, the last entry is the least important.' },

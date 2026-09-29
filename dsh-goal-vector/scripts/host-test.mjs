@@ -299,7 +299,8 @@ try {
 	ok('adopting writes the selection to disk', JSON.parse(await readFile(storePath, 'utf8')).selections['session-a']?.vectorId === vector.id);
 	const prompt = section.text();
 	ok('the adopted vector reaches the prompt', prompt.includes('goals_vector') && prompt.includes('1. Обновить README'), prompt.slice(0, 140));
-	ok('the prompt states the drop order', prompt.includes('drop the lowest-priority ones first'));
+	ok('the prompt states the drop order', prompt.includes('LOWEST-priority goals are given up first'));
+	ok('the prompt explains the concept to the model', prompt.includes('ideal mode of behaviour') && prompt.includes('REVERSE of the order'));
 
 	// Editing the vector must change the text of a chat already following it —
 	// this is why the store keeps the id, not the rendered text.
