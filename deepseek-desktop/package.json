@@ -1,0 +1,21 @@
+{
+  "name": "deepseek-desktop",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:bin": "node scripts/build.mjs --no-appimage",
+    "start": "neu run",
+    "test": "node test/single-instance.test.mjs && node test/single-instance-helper.test.mjs",
+    "postinstall": "neu plugins"
+  },
+  "devDependencies": {
+    "@neutralinojs-contrib/builder": "1.0.0",
+    "@neutralinojs/neu": "11.8.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  }
+}
