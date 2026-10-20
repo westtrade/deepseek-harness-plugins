@@ -13,8 +13,10 @@ const reactStub = {
 const source = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8');
 let captured;
 globalThis.window = { __ModuleLoader__: { load: (definition) => { captured = definition; } } };
+const primitivesStub = { IconChevronDownOutline14: 'IconChevronDownOutline14' };
 const requireShim = (specifier) => {
 	if (specifier === 'react') return reactStub;
+	if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return primitivesStub;
 	throw new Error(`unexpected require(${specifier})`);
 };
 const moduleShim = { exports: {} };
@@ -71,7 +73,11 @@ ok('the card writes through the settings scope', source.includes('host.set('));
 ok('the card offers every supported transporter', ['TCP', 'NATS', 'Redis', 'MQTT', 'AMQP'].every((name) => source.includes(`"${name}"`)));
 ok('the card validates the port', source.includes('port must be 1-65535'));
 ok('the card polls the mesh state', source.includes('setInterval'));
-ok('the card shows remote services only', source.includes('service.local !== true'));
+ok('the card reuses the shell chevron', source.includes('primitives.IconChevronDownOutline14'));
+ok('the card collapses and expands', source.includes('aria-expanded') && source.includes('open ? body : null'));
+ok('the card starts collapsed, like every shipped card', source.includes('react.useState(false)'));
+ok('the card copies the shipped card styles', source.includes('dshmca_card') && source.includes('border-radius:16px') && source.includes('padding:14px 16px'));
+ok('the card injects its own stylesheet', source.includes('dsh-moleculer/settings-card.css'));
 
 console.log(`  registered: ${registrations.map((r) => `${r.options.name} → ${r.options.id}`).join(' | ')}`);
 console.log(`  copy keys : ${enKeys.length} en / ${zhKeys.length} zh / ${ruKeys.length} ru`);

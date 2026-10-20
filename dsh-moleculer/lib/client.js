@@ -5,6 +5,8 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
+		// Shell primitives: the card wears the same chevron as every other plugin card.
+		const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region lib/types/client/index.js
 		/** This package's copy namespace. */
 		const NS = "moleculer";
@@ -18,6 +20,9 @@ window.__ModuleLoader__.load({
 		const REFRESH_MS = 5000;
 		const en = {
 			"panel.title": "Moleculer mesh",
+			"panel.description": "Broker connection and the live mesh for the AI",
+			"a11y.expand": "Expand",
+			"a11y.collapse": "Collapse",
 			"settings.namespace": "Namespace",
 			"settings.namespaceHint": "Peers must share the namespace to see each other.",
 			"settings.transporter": "Transporter",
@@ -38,6 +43,9 @@ window.__ModuleLoader__.load({
 		};
 		const zh = {
 			"panel.title": "Moleculer 网格",
+			"panel.description": "AI 使用的 Broker 连接与实时网格",
+			"a11y.expand": "展开",
+			"a11y.collapse": "收起",
 			"settings.namespace": "命名空间",
 			"settings.namespaceHint": "对等节点必须使用同一命名空间才能互相发现。",
 			"settings.transporter": "传输方式",
@@ -58,6 +66,9 @@ window.__ModuleLoader__.load({
 		};
 		const ru = {
 			"panel.title": "Сеть Moleculer",
+			"panel.description": "Подключение брокера и живая сеть для ИИ",
+			"a11y.expand": "Развернуть",
+			"a11y.collapse": "Свернуть",
 			"settings.namespace": "Пространство имён",
 			"settings.namespaceHint": "Узлы видят друг друга, только если пространство имён совпадает.",
 			"settings.transporter": "Транспорт",
@@ -76,6 +87,24 @@ window.__ModuleLoader__.load({
 			"state.services": "Сервисы",
 			"state.empty": "Удалённых сервисов пока нет — запустите узел в этом пространстве имён."
 		};
+		/**
+		* Card styles, copied from the harness's own plugin card so this one folds
+		* and unfolds exactly like the shipped cards next to it (same border,
+		* radius, header padding, chevron rotation).
+		*/
+		const CARD_CSS = ".dshmca_card{border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-layer-3);border-radius:16px;list-style:none;transition:border-color .16s,background .16s}.dshmca_card:hover{border-color:var(--dsw-alias-label-dimmed)}.dshmca_cardOpen{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}.dshmca_header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}.dshmca_header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.dshmca_headText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.dshmca_name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}.dshmca_description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}.dshmca_chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}.dshmca_chevronOpen{transform:rotate(180deg)}.dshmca_body{border-top:.5px solid var(--dsw-alias-border-l2);margin:0 16px;padding:12px 0 14px;display:flex;flex-direction:column;gap:10px}";
+		/** Style-tag identity, mirroring the loader's `data-plugin-css` convention. */
+		const CARD_STYLE_TAG = "dsh-moleculer/settings-card.css";
+		/** Inject the card stylesheet once per document. */
+		function ensureCardStyle() {
+			if (typeof document === "undefined") return;
+			if (document.querySelector(`style[data-plugin-css=${JSON.stringify(CARD_STYLE_TAG)}]`) !== null) return;
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "dsh-moleculer";
+			tag.dataset.pluginCss = CARD_STYLE_TAG;
+			tag.textContent = CARD_CSS;
+			document.head.appendChild(tag);
+		}
 		/** Create one element. */
 		function el(tag, props, ...children) {
 			return react.createElement(tag, props, ...children);
@@ -142,6 +171,7 @@ window.__ModuleLoader__.load({
 		* what the model gets.
 		*/
 		function MeshSettingsCard({ t, host }) {
+			const [open, setOpen] = react.useState(false);
 			const [draft, setDraft] = react.useState(null);
 			const [busy, setBusy] = react.useState(false);
 			const [notice, setNotice] = react.useState(null);
@@ -192,10 +222,10 @@ window.__ModuleLoader__.load({
 					setBusy(false);
 				}
 			};
-			const services = state?.state?.services?.filter((service) => service.local !== true) ?? [];
+			const services = state?.state?.services ?? [];
 			const nodes = [...new Set(services.map((service) => service.nodeID))];
-			return el("div", { style: { display: "flex", flexDirection: "column", gap: "10px", padding: "12px", border: "1px solid var(--dsw-alias-border-l4, #d0d3d6)", borderRadius: "10px", background: "var(--dsw-alias-bg-elevated, transparent)" } },
-				el("div", { style: { fontSize: "13px", fontWeight: 600 } }, t("panel.title")),
+			const title = t("panel.title");
+			const body = el("div", { className: "dshmca_body" },
 				el("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px" } },
 					label(t("settings.namespace"), el("input", {
 						value: draft.namespace,
@@ -224,6 +254,19 @@ window.__ModuleLoader__.load({
 						? el("div", { style: { fontSize: "11px", color: "var(--dsw-alias-label-tertiary, inherit)" } }, t("state.empty"))
 						: el("ul", { style: { margin: 0, paddingLeft: "18px", fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" } },
 							...services.map((service) => el("li", { key: `${service.nodeID}-${service.name}` }, `${service.name} @ ${service.nodeID}`)))));
+			return el("li", { className: `dshmca_card${open ? " dshmca_cardOpen" : ""}` },
+				el("button", {
+					type: "button",
+					className: "dshmca_header",
+					"aria-expanded": open,
+					"aria-label": `${t(open ? "a11y.collapse" : "a11y.expand")}: ${title}`,
+					onClick: () => setOpen(!open)
+				},
+					el("span", { className: "dshmca_headText" },
+						el("span", { className: "dshmca_name" }, title),
+						el("span", { className: "dshmca_description" }, t("panel.description"))),
+					el(primitives.IconChevronDownOutline14, { className: `dshmca_chevron${open ? " dshmca_chevronOpen" : ""}` })),
+				open ? body : null);
 		}
 		/**
 		* Client plugin body: the settings card, shown on the Plugins settings tab.
@@ -231,6 +274,11 @@ window.__ModuleLoader__.load({
 		*/
 		function apply(ctx) {
 			const t = ctx.locale.bind(NS);
+			ensureCardStyle();
+			ctx.effect(() => {
+				ensureCardStyle();
+				return () => document.querySelector(`style[data-plugin-css=${JSON.stringify(CARD_STYLE_TAG)}]`)?.remove();
+			}, "moleculer: card styles");
 			const host = ctx.settingsScope.bind({ namespace: SETTINGS_NS });
 			ctx.effect(() => {
 				// Another plugin may already have registered Russian: `addLanguage`

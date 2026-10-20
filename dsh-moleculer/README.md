@@ -84,7 +84,10 @@ ln -sfn ~/deepseek-harness-plugins/dsh-moleculer ~/.dsh/profiles/node_modules/ds
 ## Где настройки в интерфейсе
 
 **Settings → Plugins** (вкладка Plugins, секция «Plugin configuration»),
-карточка **«Сеть Moleculer»** / **«Moleculer mesh»**. Внутри: поля
+карточка **«Сеть Moleculer»** / **«Moleculer mesh»**. Она свёрнута по умолчанию
+и разворачивается кликом по заголовку — так же, как карточки остальных
+плагинов (тот же chevron, тот же радиус 16px, тот же отступ заголовка).
+Внутри: поля
 `namespace`, `transporter`, `host`, `port`, `nodeID`, `peers`, кнопка
 **Применить** и живое состояние сети под ними.
 
