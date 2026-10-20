@@ -1,0 +1,25 @@
+{
+  "name": "dsh-moleculer",
+  "version": "0.1.0",
+  "description": "Moleculer mesh integration for DeepSeek Harness: runs a broker, publishes the mesh's services to the AI as MCP tools, and tells a working model when the mesh changes",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "scripts", "README.md"],
+  "scripts": {
+    "test": "node scripts/mesh-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test:mesh": "node scripts/mesh-test.mjs",
+    "test:host": "node scripts/host-test.mjs",
+    "test:client": "node scripts/client-smoke.mjs"
+  },
+  "dependencies": {
+    "moleculer": "^0.14.35"
+  },
+  "dsh": { "client": { "platform": "web", "inject": [] } },
+  "keywords": ["deepseek-harness", "dsh", "plugin", "moleculer", "mcp", "microservices"],
+  "license": "MIT"
+}

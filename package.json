@@ -1,0 +1,11 @@
+{
+  "name": "deepseek-harness-plugins",
+  "private": true,
+  "description": "Plugins for DeepSeek Harness (dsh). Runtime deps of the plugins that need them live here, because a plugin loaded from a symlinked workspace path resolves its imports against this directory.",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "moleculer": "^0.14.35"
+  },
+  "license": "MIT"
+}
