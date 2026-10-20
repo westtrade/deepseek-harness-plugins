@@ -67,6 +67,27 @@ node dsh-goal-vector/scripts/client-smoke.mjs  # обвязка панели и 
 
 Подробности и установка: [dsh-goal-vector/README.md](dsh-goal-vector/README.md).
 
+## `dsh-moleculer`
+
+Интеграция с [Moleculer](https://moleculer.services/): плагин поднимает узел
+сети внутри харнесса и соединяется с другими узлами по TCP/NATS/Redis/MQTT/AMQP
+(параметры подключения — в **Settings**). Каждый сервис сети публикуется как
+инструмент модели `mesh_<сервис>_<действие>`; через них же узел рассказывает о
+себе (`mesh_node_health`, `mesh_node_services`, `mesh_node_actions`). Тот же
+набор отдаётся **по MCP** (`POST /api/moleculer/mcp`), поэтому к сети может
+подключиться любой внешний MCP-клиент. Когда узел присоединяется, уходит или
+меняет сервисы, работающая модель получает сообщение об этом — отдыхающие не
+будятся. Управление из чата: `/moleculer start|stop|restart|status`.
+
+```sh
+npm install                                    # moleculer + MCP SDK
+node dsh-moleculer/scripts/mesh-test.mjs       # каталог и схемы
+node dsh-moleculer/scripts/host-test.mjs       # брокер, инструменты, команда
+node dsh-moleculer/scripts/client-smoke.mjs    # карточка настроек
+```
+
+Подробности и установка: [dsh-moleculer/README.md](dsh-moleculer/README.md).
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).
