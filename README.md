@@ -88,6 +88,22 @@ node dsh-moleculer/scripts/client-smoke.mjs    # карточка настрое
 
 Подробности и установка: [dsh-moleculer/README.md](dsh-moleculer/README.md).
 
+## `deepseek-desktop`
+
+Десктопное приложение: запускает `dsh --profile web` и показывает веб-интерфейс
+в своём окне. Крестик прячет окно в трей, иконка в трее возвращает его.
+**Инстанс всегда один**: повторный запуск не открывает второе окно, а
+разворачивает уже работающее (в том числе свёрнутое) и завершается сам; уже
+поднятый dsh при этом не перезапускается.
+
+```sh
+bun install         # сборка: neu и плагин builder
+bun run build       # бинари со вшитым кодом + AppImage, с проверкой
+bun test            # тесты одного инстанса
+```
+
+Подробности: [deepseek-desktop/README.md](deepseek-desktop/README.md).
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).
