@@ -1,0 +1,72 @@
+{
+  "applicationId": "js.neutralino.deepseek-launcher",
+  "applicationName": "DeepSeek Harness",
+  "version": "1.0.0",
+  "defaultMode": "window",
+  "port": 0,
+  "documentRoot": "/resources/",
+  "url": "/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "tokenSecurity": "none",
+  "logging": {
+    "enabled": false,
+    "writeToLogFile": false
+  },
+  "nativeAllowList": [
+    "os.execCommand",
+    "os.spawnProcess",
+    "os.getEnv",
+    "os.getEnvs",
+    "os.getPath",
+    "os.setTray",
+    "computer.getKernelInfo",
+    "filesystem.readFile",
+    "filesystem.writeFile",
+    "filesystem.remove",
+    "filesystem.createWatcher",
+    "filesystem.getStats",
+    "window.hide",
+    "window.show",
+    "window.focus",
+    "window.unminimize",
+    "window.setIcon",
+    "events.*",
+    "app.getProcessId",
+    "app.exit"
+  ],
+  "modes": {
+    "window": {
+      "title": "DeepSeek Harness",
+      "icon": "/resources/icons/1792170388472b.png",
+      "width": 1280,
+      "height": 800,
+      "center": true,
+      "minWidth": 600,
+      "minHeight": 400,
+      "borderless": false,
+      "maximize": false,
+      "hidden": false,
+      "resizable": true,
+      "exitProcessOnClose": false,
+      "enableInspector": false
+    }
+  },
+  "cli": {
+    "binaryName": "deepseek-launcher",
+    "resourcesPath": "/resources/",
+    "extensionsPath": "/extensions/",
+    "builder": {
+      "linux": {
+        "targets": [
+          {
+            "target": "appimage",
+            "arch": ["x64"],
+            "icon": "./installerassets/linux/appimage/app.png",
+            "output": "./dist/linux"
+          }
+        ]
+      }
+    }
+  }
+}
