@@ -27,6 +27,7 @@ const ok = (label, cond, extra = '') => { if (cond) { pass += 1; return; } fail 
 function fakeHost() {
 	const routes = new Map();
 	const tools = new Map();
+	const commands = new Map();
 	const effects = [];
 	const listeners = new Map();
 	const injected = [];
@@ -51,6 +52,7 @@ function fakeHost() {
 	const host = {
 		routes,
 		tools,
+		commands,
 		effects,
 		injected,
 		sessions,
@@ -70,7 +72,14 @@ function fakeHost() {
 			},
 			inject(names, callback) {
 				injected.push(Array.isArray(names) ? names.join('+') : String(names));
-				callback({});
+				callback({
+					commands: {
+						register(definition) {
+							commands.set(definition.name, definition);
+							return () => commands.delete(definition.name);
+						}
+					}
+				});
 				return () => {};
 			},
 			get(name) {
@@ -170,6 +179,10 @@ ok('the MCP route is registered', host.routes.has(`exact:${MCP_PATH}`));
 ok('the settings namespace is registered', SETTINGS_NS === 'dsh-moleculer');
 ok('the broker stops with the plugin', host.effects.includes('moleculer: broker stop'));
 ok('the settings watcher is registered', host.effects.includes('moleculer: settings watch'));
+ok('the /moleculer command is registered', host.commands.has('moleculer'), [...host.commands.keys()].join(','));
+ok('the state route reports the command as ready', (await call(host.routes.get(`exact:${STATE_PATH}`).handler, 'GET', STATE_PATH)).body.command === true);
+const command = host.commands.get('moleculer');
+ok('the command advertises its verbs', String(command?.input?.hint).includes('start'), String(command?.input?.hint));
 
 const stateRoute = host.routes.get(`exact:${STATE_PATH}`);
 const initial = await call(stateRoute.handler, 'GET', STATE_PATH);
@@ -178,6 +191,17 @@ ok('the broker reports running', initial.body.state.running === true, JSON.strin
 // `$node` is published deliberately: it is the local smoke-test tool.
 ok('a fresh broker publishes the local $node tools', initial.body.tools.length > 0 && initial.body.tools.every((name) => name.startsWith('mesh_node_')), initial.body.tools.join(','));
 ok('the summary mentions the namespace', initial.body.summary.includes('dsh'), initial.body.summary);
+
+// --- the chat command ---
+const statusReply = await command.handler({ rawInput: '' });
+ok('the command reports status', statusReply.kind === 'success' && statusReply.text.includes('running'), statusReply.text);
+const badVerb = await command.handler({ rawInput: 'frobnicate' });
+ok('the command refuses an unknown verb', badVerb.kind === 'error' && badVerb.text.includes('unknown verb'), badVerb.text);
+const stopped = await command.handler({ rawInput: 'stop' });
+ok('the command stops the mesh', stopped.kind === 'success' && (await call(stateRoute.handler, 'GET', STATE_PATH)).body.state.running === false, stopped.text);
+ok('stopping removes the mesh tools', (await call(stateRoute.handler, 'GET', STATE_PATH)).body.tools.length === 0);
+const restarted = await command.handler({ rawInput: 'restart' });
+ok('the command restarts the mesh', restarted.kind === 'success' && (await call(stateRoute.handler, 'GET', STATE_PATH)).body.state.running === true, restarted.text);
 
 const wrongMethod = await call(stateRoute.handler, 'POST', STATE_PATH);
 ok('the state route refuses a write', wrongMethod.status === 405, String(wrongMethod.status));

@@ -62,6 +62,8 @@ export async function apply(ctx) {
 
 	/** Live mesh projection; rebuilt from the registry after every change. */
 	let state = { running: false, namespace: '', nodeID: '', services: [] };
+	/** Whether the `/moleculer` chat command is registered (it needs `commands`). */
+	let commandReady = false;
 	/** Tools currently registered, by public name. */
 	const registered = new Map();
 	/** Alerts waiting to be delivered to busy agents. */
@@ -295,6 +297,7 @@ export async function apply(ctx) {
 			sendJson(res, 200, {
 				state,
 				tools: [...registered.keys()],
+				command: commandReady,
 				summary: describeMesh(state)
 			});
 		}
@@ -365,6 +368,45 @@ export async function apply(ctx) {
 			}
 		}
 	}), 'moleculer: mcp route');
+
+	// --- chat control: /moleculer starts, stops, and reports the mesh ---
+	//
+	// `commands` is optional: a deployment without the command runtime keeps the
+	// panel, the tools and the MCP endpoint.
+	ctx.inject(['commands'], (commandCtx) => {
+		commandCtx.commands.register({
+			name: 'moleculer',
+			description: 'Start, stop, restart, or inspect the Moleculer mesh',
+			input: { hint: '[start|stop|restart|status]' },
+			handler: async ({ rawInput }) => {
+				const verb = String(rawInput ?? '').trim().toLowerCase();
+				try {
+					if (verb === '' || verb === 'status') {
+						return {
+							kind: 'success',
+							text: `${state.running ? 'running' : 'stopped'} — ${describeMesh(state)}\nTools: ${registered.size === 0 ? 'none' : [...registered.keys()].join(', ')}`
+						};
+					}
+					if (verb === 'start') {
+						await startBroker();
+						return { kind: 'success', text: `Moleculer mesh started. ${describeMesh(state)}` };
+					}
+					if (verb === 'stop') {
+						await stopBroker();
+						return { kind: 'success', text: 'Moleculer mesh stopped; its tools were removed.' };
+					}
+					if (verb === 'restart') {
+						await startBroker();
+						return { kind: 'success', text: `Moleculer mesh restarted. ${describeMesh(state)}` };
+					}
+					return { kind: 'error', text: `unknown verb "${verb}" — use /moleculer start|stop|restart|status` };
+				} catch (error) {
+					return { kind: 'error', text: `moleculer: ${String(error?.message ?? error)}` };
+				}
+			}
+		});
+		commandReady = true;
+	});
 
 	ctx.effect(() => () => {
 		void stopBroker();
