@@ -27,7 +27,9 @@ const languages = [];
 const ctx = {
 	locale: {
 		bind: () => (key) => key,
-		addLanguage: (input) => { languages.push(input); return () => {}; },
+		// Simulates another plugin having registered Russian first: this MUST NOT
+		// break the browser half, or the settings card never appears.
+		addLanguage: (input) => { languages.push(input); throw new Error('locale "ru" is already registered'); },
 		register: (ns, dicts) => { dictionaries.push({ ns, dicts }); return () => {}; }
 	},
 	slots: {
@@ -51,7 +53,7 @@ exportsObject.apply(ctx);
 
 const card = registrations.find((entry) => entry.options.name === 'settings.plugin.item');
 ok('the settings card is registered', card !== undefined);
-ok('the card is keyed by the settings namespace', card?.options.id === 'dsh-moleculer', String(card?.options.id));
+ok('the card claims the settings namespace as a KEYED slot key', card?.options.key === 'dsh-moleculer', JSON.stringify(card?.options));
 ok('the card declares the copy namespace', card?.options.locale === 'moleculer', String(card?.options.locale));
 ok('the card bridges the settings scope', typeof card?.options.inject === 'function' && card.options.inject().host !== undefined);
 
@@ -61,7 +63,8 @@ const ruKeys = Object.keys(dictionary?.dicts.ru ?? {});
 const zhKeys = Object.keys(dictionary?.dicts.zh ?? {});
 ok('three dictionaries ship', enKeys.length > 15, String(enKeys.length));
 ok('all dictionaries share one key set', enKeys.length === zhKeys.length && zhKeys.length === ruKeys.length && enKeys.every((k) => zhKeys.includes(k) && ruKeys.includes(k)), `${enKeys.length}/${zhKeys.length}/${ruKeys.length}`);
-ok('Russian is offered as a language pack', languages.some((entry) => entry.id === 'ru' && entry.fallback === 'en'), JSON.stringify(languages));
+ok('the plugin still applies when Russian is already registered', registrations.some((entry) => entry.options.name === 'settings.plugin.item'), 'a duplicate language must not sink the card');
+ok('it attempts to offer the Russian pack', languages.some((entry) => entry.id === 'ru' && entry.fallback === 'en'), JSON.stringify(languages));
 
 ok('the card reads the host state route', source.includes('/api/moleculer/state'));
 ok('the card writes through the settings scope', source.includes('host.set('));

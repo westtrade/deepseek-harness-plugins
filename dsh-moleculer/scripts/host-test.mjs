@@ -35,6 +35,7 @@ function fakeHost() {
 	const agents = new Map();
 	const settingsWatchers = new Set();
 	let section = {};
+	let registeredSchema;
 	let pending;
 	let sealed = false;
 
@@ -58,6 +59,7 @@ function fakeHost() {
 		sessions,
 		agents,
 		get sealedFlag() { return sealed; },
+		get settingsSchema() { return registeredSchema; },
 		/** Change the settings section and fire the watchers. */
 		writeSettings(value) {
 			section.value = value;
@@ -106,6 +108,7 @@ function fakeHost() {
 			},
 			settings: {
 				register(ns, schema, options) {
+					registeredSchema = schema;
 					section = { normalize: { normalizeSettings: schema }, value: pending ?? options?.base ?? {} };
 					return settingsScope;
 				}
@@ -178,6 +181,10 @@ ok('the state route is registered', host.routes.has(`exact:${STATE_PATH}`));
 ok('the MCP route is registered', host.routes.has(`exact:${MCP_PATH}`));
 ok('the settings namespace is registered', SETTINGS_NS === 'dsh-moleculer');
 ok('the broker stops with the plugin', host.effects.includes('moleculer: broker stop'));
+// `settings.describe()` serializes with schema.toJSON(); a bare function throws
+// there and takes the whole describe mirror down, hiding every settings card.
+ok('the settings schema is serializable', typeof host.settingsSchema?.toJSON === 'function' && host.settingsSchema.toJSON().type === 'object');
+ok('the schema still resolves values', host.settingsSchema({ port: 1234 }).port === 1234);
 ok('the settings watcher is registered', host.effects.includes('moleculer: settings watch'));
 ok('the /moleculer command is registered', host.commands.has('moleculer'), [...host.commands.keys()].join(','));
 ok('the state route reports the command as ready', (await call(host.routes.get(`exact:${STATE_PATH}`).handler, 'GET', STATE_PATH)).body.command === true);

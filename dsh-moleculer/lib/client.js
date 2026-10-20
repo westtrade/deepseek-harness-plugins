@@ -232,11 +232,22 @@ window.__ModuleLoader__.load({
 		function apply(ctx) {
 			const t = ctx.locale.bind(NS);
 			const host = ctx.settingsScope.bind({ namespace: SETTINGS_NS });
-			ctx.effect(() => ctx.locale.addLanguage({ id: "ru", label: "Русский", fallback: "en" }), "moleculer: russian language pack");
+			ctx.effect(() => {
+				// Another plugin may already have registered Russian: `addLanguage`
+				// throws on a duplicate id, and one plugin failing to apply must not
+				// take the whole browser half down with it.
+				try {
+					return ctx.locale.addLanguage({ id: "ru", label: "Русский", fallback: "en" });
+				} catch {
+					return () => {};
+				}
+			}, "moleculer: russian language pack");
 			ctx.effect(() => ctx.locale.register(NS, { zh, en, ru }), "moleculer: dictionaries");
 			ctx.effect(() => ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
 				name: "settings.plugin.item",
-				id: SETTINGS_NS,
+				// KEYED slot: the Plugins tab dispatches by `entryKey`, which is the
+				// settings namespace, so the card must claim that key (not an `id`).
+				key: SETTINGS_NS,
 				order: 40,
 				locale: NS,
 				inject: () => ({ host })

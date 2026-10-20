@@ -7,8 +7,8 @@
 ## Что делает
 
 - **Поднимает брокер** при старте и соединяется с другими узлами по
-  TCP/NATS/Redis/MQTT/AMQP. Параметры подключения — в **Settings** харнесса
-  (вкладка Plugins, карточка **Moleculer mesh**).
+  TCP/NATS/Redis/MQTT/AMQP. Параметры подключения — **Settings → Plugins →
+  карточка «Moleculer mesh» / «Сеть Moleculer»**.
 - **Публикует сервисы как инструменты.** Каждое действие сети становится
   инструментом модели: `mesh_<сервис>_<действие>`. Первыми идут действия
   самого узла (`$node`), потому что через них можно спросить сеть о себе:
@@ -80,6 +80,17 @@ ln -sfn ~/deepseek-harness-plugins/dsh-moleculer ~/.dsh/profiles/node_modules/ds
 симлинку и разрешает импорты относительно **реального** пути, поэтому
 `node_modules` рядом с репозиторием — единственное место, откуда он увидит
 `moleculer` и MCP SDK.
+
+## Где настройки в интерфейсе
+
+**Settings → Plugins** (вкладка Plugins, секция «Plugin configuration»),
+карточка **«Сеть Moleculer»** / **«Moleculer mesh»**. Внутри: поля
+`namespace`, `transporter`, `host`, `port`, `nodeID`, `peers`, кнопка
+**Применить** и живое состояние сети под ними.
+
+Карточка появляется, только если хост отдаёт namespace в `settings.describe()`:
+этот вызов сериализует схему через `schema.toJSON()`, поэтому схема обязана
+его иметь (см. `lib/index.js`, `settingsSchema`).
 
 ## Настройки
 

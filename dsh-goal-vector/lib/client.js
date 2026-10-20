@@ -693,7 +693,16 @@ window.__ModuleLoader__.load({
 			// adding it here also makes it selectable in Settings → Language. Its
 			// fallback is English, so every other plugin keeps working when Russian
 			// is active — their namespaces simply fall through to `en`.
-			ctx.effect(() => ctx.locale.addLanguage({ id: "ru", label: "Русский", fallback: "en" }), "goal-vector: russian language pack");
+			ctx.effect(() => {
+				// Another plugin may already have registered Russian: `addLanguage`
+				// throws on a duplicate id, and one plugin failing to apply must not
+				// take the whole browser half down with it.
+				try {
+					return ctx.locale.addLanguage({ id: "ru", label: "Русский", fallback: "en" });
+				} catch {
+					return () => {};
+				}
+			}, "goal-vector: russian language pack");
 			ctx.effect(() => ctx.locale.register(NS, { zh, en, ru }), "goal-vector: dictionaries");
 			// The same id links the sidebar row to the main panel: the sidebar passes
 			// this id to layout.selectPanel().

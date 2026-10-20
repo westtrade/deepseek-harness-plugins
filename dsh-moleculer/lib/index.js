@@ -276,7 +276,24 @@ export async function apply(ctx) {
 	//
 	// `register` takes a schema FUNCTION and returns a scoped handle, so the
 	// resolved value and the change feed come from the same registration.
-	const settingsScope = ctx.settings.register(SETTINGS_NS, (raw) => normalizeSettings(raw ?? {}), {
+	//
+	// The schema is a plain function PLUS a `toJSON()`: `register` only CALLS the
+	// schema, but `settings.describe()` serializes it with `schema.toJSON()`, and a
+	// bare function has none — which throws and takes the whole describe mirror
+	// down, so no settings card anywhere could be dispatched.
+	const settingsSchema = (raw) => normalizeSettings(raw ?? {});
+	settingsSchema.toJSON = () => ({
+		type: 'object',
+		properties: {
+			namespace: { type: 'string' },
+			transporter: { type: 'string' },
+			host: { type: 'string' },
+			port: { type: 'number' },
+			nodeID: { type: 'string' },
+			peers: { type: 'string' }
+		}
+	});
+	const settingsScope = ctx.settings.register(SETTINGS_NS, settingsSchema, {
 		base: { namespace: 'dsh', transporter: 'TCP', host: '127.0.0.1', port: 6174, nodeID: '', peers: '' }
 	});
 
