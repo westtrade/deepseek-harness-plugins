@@ -547,6 +547,11 @@ export async function apply(ctx, config = {}) {
 	 * is guarded: it is the policy that constrains what the AI is allowed to
 	 * schedule, so the AI must not be able to widen it. Reading stays open, since
 	 * the panel needs the catalog to render its pickers.
+	 *
+	 * A person's write keeps only what this deployment can route (plus entries
+	 * from a provider that could not be listed at all) and answers the rest as
+	 * `dropped`, so a model that has since left the catalog cannot block the
+	 * whole card from ever being saved.
 	 */
 	const settingsHandler = async (req, res) => {
 		try {
@@ -568,13 +573,38 @@ export async function apply(ctx, config = {}) {
 				res.end();
 				return;
 			}
-			if (trust(req).trusted !== true) {
+			const person = trust(req).trusted === true;
+			if (!person) {
 				throw new JobInputError('the allowed-model list can only be changed by a person in the Web panel', 'allowedModels');
 			}
 			const body = await readJson(req);
 			const catalog = await modelCatalog();
 			const available = catalog.models.map((entry) => ({ provider: entry.provider, model: entry.model }));
-			const next = normalizeAllowedModels(body.allowedModels, available);
+			const keyOf = (entry) => `${entry.provider}\u0000${entry.model}`;
+			const routable = new Set(available.map(keyOf));
+			/*
+			 * The panel can only render and tick models the catalog lists, yet it
+			 * always posts the whole list — entries stored earlier included. Once a
+			 * provider drops or renames a model, such an entry is invisible in the
+			 * card, so a person cannot untick it, and refusing the write would leave
+			 * the list unsavable for good. A person's write therefore drops the
+			 * entries this deployment no longer serves and reports them back; only
+			 * their shape is validated.
+			 *
+			 * A provider whose listing failed cannot be checked at all, so its
+			 * entries are kept as they are: an unrelated provider hiccup must not
+			 * quietly erase the list. `'(all)'` is the sentinel for "nothing could
+			 * be listed", which also leaves nothing verifiable.
+			 */
+			const unverifiable = new Set(catalog.failures.map((failure) => failure.provider));
+			const blind = catalog.models.length === 0 && catalog.failures.length > 0;
+			const keep = (entry) => blind || routable.has(keyOf(entry)) || unverifiable.has(entry.provider);
+			const asked = normalizeAllowedModels(body.allowedModels);
+			const next = asked.filter(keep);
+			const dropped = asked.filter((entry) => !keep(entry)).map((entry) => `${entry.provider}/${entry.model}`);
+			if (dropped.length > 0) {
+				ctx.logger.warn(`cron-schedule: not saved as allowed models, this deployment cannot route them: ${dropped.join(', ')}`);
+			}
 			await store.setSettings({ allowedModels: next });
 			// Keep the settings namespace authoritative too, so the Plugins page
 			// shows the same list this route just stored.
@@ -584,7 +614,7 @@ export async function apply(ctx, config = {}) {
 				ctx.logger.warn(`cron-schedule: could not update the settings namespace: ${String(error?.message ?? error)}`);
 			}
 			revision += 1;
-			sendJson(res, 200, { ok: true, allowedModels: allowedModels() });
+			sendJson(res, 200, { ok: true, allowedModels: allowedModels(), dropped });
 		} catch (error) {
 			if (error instanceof JobInputError) {
 				sendJson(res, 400, { error: error.message, field: error.field });

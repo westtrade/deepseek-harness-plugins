@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
 			"settings.discard": "Discard",
 			"settings.unsaved": "Unsaved",
 			"settings.saveFailed": "Could not save the list.",
+			"settings.dropped": "Removed, this deployment no longer serves it: {list}",
 			"settings.expand": "Expand",
 			"settings.collapse": "Collapse",
 			"settings.allowedModelsLegend": "Allowed models",
@@ -135,6 +136,7 @@ window.__ModuleLoader__.load({
 			"settings.discard": "放弃",
 			"settings.unsaved": "未保存",
 			"settings.saveFailed": "无法保存列表。",
+			"settings.dropped": "已移除（本部署不再提供）：{list}",
 			"settings.expand": "展开",
 			"settings.collapse": "收起",
 			"settings.allowedModelsLegend": "允许的模型",
@@ -338,6 +340,10 @@ window.__ModuleLoader__.load({
 				return () => clearTimeout(timer);
 			}, [notice]);
 			return [notice, setNotice];
+		}
+		/** The Host's own sentence for a refused write, or null when it said nothing. */
+		function messageOf(error) {
+			return typeof error?.message === "string" && error.message.length > 0 ? error.message : null;
 		}
 		/** One host call; throws the server's message on a non-2xx answer. */
 		async function callHost(method, url, body) {
@@ -1072,8 +1078,16 @@ window.__ModuleLoader__.load({
 		* anything but an authenticated browser session.
 		*/
 		function ModelAllowListRow({ t }) {
-			/** Staged form state: the served catalog, the saved list, and the drafts. */
-			const [state, setState] = react.useState({ allowedModels: [], models: [], loading: true, saving: false, failed: false, open: false });
+			/**
+			 * Staged form state: the served catalog, the saved list, and the drafts.
+			 *
+			 * `loadError` and `error` are the Host's own words for a read that did
+			 * not arrive and for a refused save; `dropped` lists the entries it
+			 * discarded because this deployment no longer routes them. All three
+			 * are shown: a save that silently does nothing is indistinguishable
+			 * from a panel that is broken.
+			 */
+			const [state, setState] = react.useState({ allowedModels: [], models: [], loading: true, saving: false, loadError: null, error: null, dropped: [], open: false });
 			/**
 			 * Draft selection while the card holds unsaved edits, as an array of
 			 * `"provider\u0000model"` keys. Keys (not objects) are the single
@@ -1091,11 +1105,11 @@ window.__ModuleLoader__.load({
 						models: Array.isArray(payload?.models) ? payload.models : [],
 						loading: false,
 						saving: false,
-						failed: false
+						loadError: null
 					}));
 					setDraft(allowed.map((entry) => `${entry.provider}\u0000${entry.model}`));
-				} catch {
-					setState((current) => ({ ...current, loading: false, failed: true }));
+				} catch (error) {
+					setState((current) => ({ ...current, loading: false, saving: false, loadError: messageOf(error) }));
 				}
 			}, []);
 			react.useEffect(() => {
@@ -1120,23 +1134,28 @@ window.__ModuleLoader__.load({
 				});
 			};
 			const save = async () => {
-				setState((current) => ({ ...current, saving: true }));
+				setState((current) => ({ ...current, saving: true, error: null, dropped: [] }));
 				try {
-					await callHost("POST", SETTINGS_URL, {
+					const payload = await callHost("POST", SETTINGS_URL, {
 						allowedModels: (draft ?? []).map((key) => {
 							const [provider, model] = key.split("\u0000");
 							return { provider, model };
 						})
 					});
+					// Re-read instead of trusting the draft: the Host is the one that
+					// knows what actually got stored.
 					await load();
-					setState((current) => ({ ...current, open: false }));
-				} catch {
-					setState((current) => ({ ...current, saving: false, failed: true }));
+					setState((current) => ({
+						...current,
+						dropped: Array.isArray(payload?.dropped) ? payload.dropped : []
+					}));
+				} catch (error) {
+					setState((current) => ({ ...current, saving: false, error: messageOf(error) }));
 				}
 			};
 			const discard = () => {
 				setDraft([...savedKeys]);
-				setState((current) => ({ ...current, failed: false }));
+				setState((current) => ({ ...current, error: null, dropped: [] }));
 			};
 			// Group the catalog by provider, exactly as the Subagent card does, so a
 			// long model list stays readable.
@@ -1230,8 +1249,12 @@ window.__ModuleLoader__.load({
 				state.open ? el("div", {
 					style: { borderTop: "0.5px solid var(--dsw-alias-border-l2)", margin: "0 16px", paddingBottom: "8px" }
 				},
-					state.failed ? el("p", { role: "alert", style: { color: "var(--dsw-alias-label-error)", fontSize: "12px", margin: "12px 0 0" } },
-						t("settings.saveFailed")) : null,
+					state.loadError === null ? null : el("p", { role: "alert", style: { color: "var(--dsw-alias-label-error)", fontSize: "12px", margin: "12px 0 0" } },
+						t("panel.error", { message: state.loadError })),
+					state.error === null ? null : el("p", { role: "alert", style: { color: "var(--dsw-alias-label-error)", fontSize: "12px", margin: "12px 0 0" } },
+						t("settings.saveFailed"), " ", state.error),
+					state.dropped.length === 0 ? null : el("p", { role: "status", style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px", margin: "12px 0 0" } },
+						t("settings.dropped", { list: state.dropped.join(", ") })),
 					state.loading
 						? el("p", { role: "status", style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px", margin: "12px 0 0" } }, t("panel.loading"))
 						: el("fieldset", {

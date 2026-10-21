@@ -414,11 +414,46 @@ try {
 		allowedModels: [{ provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }, { provider: 'router-ai', model: 'xiaomi/mimo-v2.6-pro' }]
 	});
 	ok('an untrusted caller cannot change the allow-list', widened.status === 400 && widened.body.field === 'allowedModels', `${widened.status} ${JSON.stringify(widened.body)}`);
-	// A typo must not become a policy that silently never matches.
+	// A model this deployment cannot route is never stored as policy: the panel
+	// posts the whole list, and an entry that has left the catalog is invisible
+	// in the card, so it is dropped and reported back instead of blocking every
+	// save the card could ever make.
 	const unknown = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
-		allowedModels: [{ provider: 'router-ai', model: 'nope/does-not-exist' }]
+		allowedModels: [{ provider: 'router-ai', model: 'nope/does-not-exist' }, { provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }]
 	}, { trusted: true });
-	ok('an unknown model is refused', unknown.status === 400 && unknown.body.field === 'allowedModels', JSON.stringify(unknown.body));
+	ok('an unknown model is dropped, not stored', unknown.status === 200 && unknown.body.allowedModels.length === 1, JSON.stringify(unknown.body));
+	ok('the dropped model is reported back', JSON.stringify(unknown.body.dropped) === JSON.stringify(['router-ai/nope/does-not-exist']), JSON.stringify(unknown.body.dropped));
+	// Regression: a list saved earlier whose models have since left the catalog
+	// must not lock the card up. Tick a still-routed model on top of that list —
+	// exactly what the panel posts — and the save must go through, keeping the
+	// live entries and dropping the dead ones.
+	const staleList = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
+		allowedModels: [
+			{ provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' },
+			{ provider: 'router-ai', model: 'openai/gpt-6-luna' },
+			{ provider: 'router-ai', model: 'xiaomi/mimo-v2.6-pro' }
+		]
+	}, { trusted: true });
+	ok('a stale saved entry does not block the save', staleList.status === 200, `${staleList.status} ${JSON.stringify(staleList.body)}`);
+	ok('the live models of that save are kept', staleList.body.allowedModels.length === 2 && staleList.body.allowedModels.some((entry) => entry.model === 'xiaomi/mimo-v2.6-pro'), JSON.stringify(staleList.body.allowedModels));
+	ok('only the dead entry is reported as dropped', staleList.body.dropped.length === 1 && staleList.body.dropped[0].endsWith('openai/gpt-6-luna'), JSON.stringify(staleList.body.dropped));
+	// A provider whose catalog could not be listed is not judged at all: an
+	// unrelated hiccup must not erase entries the deployment may well still route.
+	host.ctx.llm.providers.push({ id: 'flaky-ai', name: 'Flaky' });
+	const unlisted = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
+		allowedModels: [
+			{ provider: 'flaky-ai', model: 'some/model' },
+			{ provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }
+		]
+	}, { trusted: true });
+	host.ctx.llm.providers.pop();
+	ok('an unlistable provider keeps its entries', unlisted.status === 200 && unlisted.body.allowedModels.some((entry) => entry.provider === 'flaky-ai'), JSON.stringify(unlisted.body));
+	ok('nothing is dropped when the provider was never checked', unlisted.body.dropped.length === 0, JSON.stringify(unlisted.body.dropped));
+	// Back to the one-model policy the checks below are written against.
+	const restored = await call(settingsRoute.handler, 'POST', '/api/cron-schedule/settings', {
+		allowedModels: [{ provider: 'router-ai', model: 'deepseek/deepseek-v4.1-flash' }]
+	}, { trusted: true });
+	ok('the allow-list is restored to one model', restored.status === 200 && restored.body.allowedModels.length === 1, JSON.stringify(restored.body.allowedModels));
 
 	// With the list in force, a job may only name an allowed model.
 	const outside = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {

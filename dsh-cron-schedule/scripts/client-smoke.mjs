@@ -176,6 +176,7 @@ for (const required of [
 	'form.alwaysNewChat', 'form.alwaysNewChatHint', 'column.chat', 'column.chatNew', 'column.chatUnbound',
 	'settings.allowedModels', 'settings.allowedModelsHint', 'settings.allowedModelsEmpty',
 	'settings.save', 'settings.saving', 'settings.discard', 'settings.unsaved', 'settings.saveFailed',
+	'settings.dropped',
 	'settings.expand', 'settings.collapse', 'settings.allowedModelsLegend',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
 	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable',
@@ -227,6 +228,12 @@ ok('settings row is a collapsible card', source.includes('"aria-expanded": state
 ok('settings row groups models by provider', source.includes('const groups = new Map()'));
 ok('settings row stages edits until Save', source.includes('const discard = () => {') && source.includes('settings.discard'));
 ok('settings row marks unsaved edits', source.includes('settings.unsaved'));
+// A refused save must say why, and a save the Host had to narrow must say what
+// it changed — otherwise "nothing happens" is indistinguishable from a bug.
+ok('settings row shows the host reason for a refused save', source.includes('t("settings.saveFailed"), " ", state.error'));
+ok('settings row reports the entries the host dropped', source.includes('t("settings.dropped", { list: state.dropped.join(", ") })'));
+ok('settings row re-reads the saved list after saving', source.includes('await load();') && source.includes('dropped: Array.isArray(payload?.dropped) ? payload.dropped : []'));
+ok('settings row stays open after saving, so the outcome is visible', (source.match(/open: false/g) ?? []).length === 1);
 ok('table shows the model column', source.includes('column.model'));
 // --- no stale "deployment default" label, and the card owns the list ---
 ok('the picker names the effective model, not a deployment default', source.includes('named === undefined ? fallback.model : named.name'));
