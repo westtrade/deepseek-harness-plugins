@@ -29,6 +29,58 @@ function ok(label, condition, extra = '') {
 	console.log('FAIL:', label, extra);
 }
 
+/**
+ * The tool-definition rules the real registry enforces.
+ *
+ * `ctx.tools.register` (from `@deepseek-ai/dsh-tools`) validates an `output`
+ * schema against its JSON-Schema subset and then validates every returned value
+ * against that same schema at call time. Both rules matter here: an earlier
+ * version of this plugin wrote `required: true` inside properties, the real
+ * registry refused all seven tools in a row, and the model silently had no
+ * `cron_*` tool at all while every check in this file still passed. The mirror
+ * below keeps that failure loud, without importing the harness package (a
+ * plugin loaded from a symlinked workspace path cannot resolve it).
+ */
+const SCHEMA_KEYWORDS = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'const', 'description', 'title']);
+const SCHEMA_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'];
+
+/** Throw when a schema uses a keyword the registry does not accept. */
+function assertToolSchema(schema, at = 'schema') {
+	if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) throw new Error(`${at} must be a schema object`);
+	for (const key of Object.keys(schema)) {
+		if (!SCHEMA_KEYWORDS.has(key)) throw new Error(`${at}.${key} is not a supported keyword`);
+	}
+	if (typeof schema.type !== 'string' || !SCHEMA_TYPES.includes(schema.type)) throw new Error(`${at}.type must be one of ${SCHEMA_TYPES.join('/')}`);
+	if (Object.hasOwn(schema, 'required')) {
+		// The one rule that broke this plugin: `required` is an array of property
+		// names on an object, never `required: true` on a property.
+		if (schema.type !== 'object') throw new Error(`${at}.required is not supported on type "${schema.type}"`);
+		if (!Array.isArray(schema.required) || schema.required.some((name) => typeof name !== 'string')) throw new Error(`${at}.required must be an array of property names`);
+	}
+	for (const [name, child] of Object.entries(schema.properties ?? {})) assertToolSchema(child, `${at}.properties.${name}`);
+	if (Object.hasOwn(schema, 'items')) assertToolSchema(schema.items, `${at}.items`);
+}
+
+/** Throw when a returned value does not match the declared output schema. */
+function assertToolValue(schema, value, at = 'value') {
+	const typeOf = (entry) => entry === null ? 'null' : Array.isArray(entry) ? 'array' : Number.isInteger(entry) ? 'integer' : typeof entry;
+	const matches = (entry) => typeOf(entry) === schema.type || (schema.type === 'number' && typeOf(entry) === 'integer');
+	if (!matches(value)) throw new Error(`${at} must be ${schema.type}, got ${typeOf(value)}`);
+	if (Object.hasOwn(schema, 'enum') && !schema.enum.includes(value)) throw new Error(`${at} must be one of ${JSON.stringify(schema.enum)}`);
+	if (schema.type === 'object') {
+		for (const name of schema.required ?? []) if (!Object.hasOwn(value, name)) throw new Error(`${at}.${name} is required`);
+		for (const [name, entry] of Object.entries(value)) {
+			const child = schema.properties?.[name];
+			if (child === undefined) {
+				if (schema.additionalProperties === false) throw new Error(`${at}.${name} is not declared in the output schema`);
+				continue;
+			}
+			assertToolValue(child, entry, `${at}.${name}`);
+		}
+	}
+	if (schema.type === 'array' && schema.items !== undefined) value.forEach((entry, index) => assertToolValue(schema.items, entry, `${at}[${index}]`));
+}
+
 /** A fake host context recording every registration. */
 function fakeContext() {
 	const effects = [];
@@ -108,7 +160,17 @@ function fakeContext() {
 		},
 		tools: {
 			register(definition) {
-				tools.set(definition.name, definition);
+				// Same contract as the real registry: a definition that breaks the
+				// schema subset throws, and every returned value is validated.
+				assertToolSchema(definition.output?.schema, `${definition.name}.output.schema`);
+				tools.set(definition.name, {
+					...definition,
+					async execute(args, exec) {
+						const value = await definition.execute(args, exec);
+						assertToolValue(definition.output.schema, JSON.parse(JSON.stringify(value)), `${definition.name} output`);
+						return value;
+					}
+				});
 				return () => tools.delete(definition.name);
 			}
 		},
@@ -333,6 +395,28 @@ try {
 		ok(`tool ${toolName} present`, host.tools.has(toolName));
 	}
 	ok('scheduler stop effect registered', host.effects.includes('cron-schedule: scheduler stop'));
+	// A registered tool must also satisfy the registry's output contract, or the
+	// model gets nothing at all (see assertToolSchema above).
+	for (const toolName of host.tools.keys()) {
+		const definition = host.tools.get(toolName);
+		assertToolSchema(definition.output.schema, `${toolName}.output.schema`);
+		ok(`tool ${toolName} renders text`, typeof definition.output.render === 'function');
+		ok(`tool ${toolName} has a description`, typeof definition.description === 'string' && definition.description.length > 40);
+	}
+
+	// --- the manifest route: what an agent can learn in one request ---
+	const manifestRoute = host.routes.get('exact:/api/cron-schedule/manifest');
+	ok('manifest route registered', manifestRoute !== undefined);
+	const manifest = await call(manifestRoute.handler, 'GET', '/api/cron-schedule/manifest');
+	ok('manifest 200', manifest.status === 200, String(manifest.status));
+	ok('manifest lists every tool', Array.isArray(manifest.body.tools) && manifest.body.tools.length === 7, JSON.stringify(manifest.body.tools?.map((tool) => tool.name)));
+	ok('manifest tools carry descriptions', manifest.body.tools.every((tool) => typeof tool.description === 'string' && tool.description.length > 40));
+	ok('manifest documents the job fields', typeof manifest.body.job?.expression === 'string' && typeof manifest.body.job?.workspacePath === 'string' && typeof manifest.body.job?.prompt === 'string');
+	ok('manifest flags the human-only route', manifest.body.endpoints?.some((entry) => entry.method === 'POST' && entry.path === '/api/cron-schedule/settings' && entry.humanOnly === true));
+	ok('manifest marks the job routes as open to the AI', manifest.body.endpoints?.filter((entry) => entry.path.startsWith('/api/cron-schedule/jobs')).every((entry) => entry.humanOnly === false));
+	ok('manifest names the status values', JSON.stringify(manifest.body.lastStatus) === JSON.stringify(['started', 'succeeded', 'failed']), JSON.stringify(manifest.body.lastStatus));
+	const manifestMethod = await call(manifestRoute.handler, 'POST', '/api/cron-schedule/manifest', {});
+	ok('manifest rejects writes', manifestMethod.status === 405, String(manifestMethod.status));
 
 	// --- the settings namespace, so the card appears under Plugin Configuration ---
 	ok('settings namespace registered', host.ctx.settings.registered.has('cron-schedule'), [...host.ctx.settings.registered.keys()].join(','));
@@ -593,6 +677,8 @@ try {
 	// The panel follows a run into its chat straight from this answer, without a
 	// second round trip, so the id must ride on the POST response itself.
 	ok('the run answer names the chat to open', run.body.job.lastStatus === 'succeeded' && run.body.job.lastSessionId === agent.options.sessionId, JSON.stringify(run.body.job.lastSessionId));
+	// Also at the top level, so a script needs no knowledge of the job view.
+	ok('the run answer repeats the chat and the outcome', run.body.sessionId === agent.options.sessionId && run.body.lastStatus === 'succeeded', JSON.stringify({ sessionId: run.body.sessionId, lastStatus: run.body.lastStatus }));
 	ok('run advanced nextRunAt into the future', afterRun.body.job.nextRunAt > Date.now());
 
 	// --- an explicit chat, and the "always new chat" switch ---
@@ -822,6 +908,28 @@ try {
 	ok('cron_delete reports true', deleted.deleted === true);
 	const deletedAgain = await deleteTool.execute({ id: toolCreated.id }, { signal: new AbortController().signal });
 	ok('cron_delete is idempotent', deletedAgain.deleted === false);
+
+	// --- id or exact name, and what a run reports back ---
+	const signal = () => new AbortController().signal;
+	const namedJob = await createTool.execute({ name: 'По имени', expression: '0 6 * * *', workspacePath: path.join(dir, 'byname'), prompt: 'p' }, { signal: signal() });
+	const ranByName = await runTool.execute({ id: 'По имени' }, { signal: signal() });
+	ok('cron_run accepts a unique name', ranByName.started === true && ranByName.id === namedJob.id, JSON.stringify(ranByName));
+	ok('cron_run names the chat it wrote into', typeof ranByName.sessionId === 'string' && ranByName.sessionId.startsWith('session-cron-'), String(ranByName.sessionId));
+	ok('cron_run reports the outcome of the run', ranByName.lastStatus === 'succeeded', String(ranByName.lastStatus));
+	ok('cron_run renders where the run went', runTool.output.render({}, ranByName)[0].text.includes(ranByName.sessionId));
+	const twin = await createTool.execute({ name: 'По имени', expression: '0 7 * * *', workspacePath: path.join(dir, 'byname'), prompt: 'p' }, { signal: signal() });
+	const ambiguous = await runTool.execute({ id: 'По имени' }, { signal: signal() }).then(() => undefined, (error) => error);
+	ok('an ambiguous name is refused instead of guessed', ambiguous instanceof Error && /2 schedules are named/.test(ambiguous.message), String(ambiguous?.message));
+	ok('the refusal lists both ids', ambiguous instanceof Error && ambiguous.message.includes(namedJob.id) && ambiguous.message.includes(twin.id));
+	const ambiguousDelete = await deleteTool.execute({ id: 'По имени' }, { signal: signal() }).then(() => undefined, (error) => error);
+	ok('cron_delete refuses an ambiguous name too', ambiguousDelete instanceof Error, String(ambiguousDelete?.message));
+	const afterRefusals = await listTool.execute({}, { signal: signal() });
+	ok('both schedules survive the refused calls', [namedJob.id, twin.id].every((id) => afterRefusals.jobs.some((entry) => entry.id === id)), JSON.stringify(afterRefusals.jobs.map((entry) => entry.id)));
+	const removedPair = await Promise.all([deleteTool.execute({ id: namedJob.id }, { signal: signal() }), deleteTool.execute({ id: twin.id }, { signal: signal() })]);
+	ok('cron_delete removes both by id afterwards', removedPair.every((entry) => entry.deleted === true), JSON.stringify(removedPair));
+	const single = await createTool.execute({ name: 'Единственная', expression: '0 8 * * *', workspacePath: path.join(dir, 'single'), prompt: 'p' }, { signal: signal() });
+	const deletedByUniqueName = await deleteTool.execute({ id: 'Единственная' }, { signal: signal() });
+	ok('cron_delete accepts a unique name', deletedByUniqueName.deleted === true && deletedByUniqueName.id === single.id, JSON.stringify(deletedByUniqueName));
 
 	// --- the store survives a restart ---
 	const { openJobStore: reopen } = await import('../lib/store.js');

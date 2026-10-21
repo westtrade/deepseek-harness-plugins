@@ -27,7 +27,7 @@
 // otherwise a reload would pick up a new index.js while still running the old
 // store/scheduler/cron code.
 const REV = new URL(import.meta.url).search;
-const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, normalizeAllowedModels, normalizeJob, openJobStore } = await import('./store.js' + REV);
+const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, MAX_PROMPT_CHARS, normalizeAllowedModels, normalizeJob, openJobStore } = await import('./store.js' + REV);
 const { createScheduler } = await import('./scheduler.js' + REV);
 const { runJob } = await import('./runner.js' + REV);
 const { describeCron, upcoming } = await import('./cron.js' + REV);
@@ -51,6 +51,16 @@ export const SETTINGS_PATH = '/api/cron-schedule/settings';
 
 /** Exact route listing the chats a job may be bound to. */
 export const CHATS_PATH = '/api/cron-schedule/chats';
+
+/**
+ * Exact route describing this plugin to a model or a person in one request.
+ *
+ * The model normally meets the plugin as seven tools in its own tool list. This
+ * route exists for the other cases: a chat that started before the plugin was
+ * installed, a headless composition, or an agent that only speaks HTTP. It is
+ * read-only and needs no browser session, exactly like `GET …/jobs`.
+ */
+export const MANIFEST_PATH = '/api/cron-schedule/manifest';
 
 /**
  * Prefix under which one job is addressed (`/api/cron-schedule/jobs/<id>`).
@@ -224,6 +234,12 @@ export async function apply(ctx, config = {}) {
 	};
 	/** Broadcast hook: bumped after every mutation so the panel can poll cheaply. */
 	let revision = 1;
+	/**
+	 * The tool surface this plugin declares, for the manifest route. Filled by
+	 * {@link registerTools} from the same definitions it registers, so the
+	 * description cannot drift from what the registry holds.
+	 */
+	const toolCatalog = [];
 	const scheduler = createScheduler({
 		store,
 		logger: ctx.logger,
@@ -519,7 +535,17 @@ export async function apply(ctx, config = {}) {
 			}
 			if (sub === 'run') {
 				await scheduler.runNow(id);
-				sendJson(res, 200, { ok: true, job: view(store.get(id) ?? existing) });
+				const after = view(store.get(id) ?? existing);
+				// The run is synchronous, so its outcome is already stored. Repeat
+				// the two fields a caller cares about at the top level: a script or
+				// an agent then needs no second request (and no knowledge of the
+				// job view) to learn which chat the task reached.
+				sendJson(res, 200, {
+					ok: true,
+					job: after,
+					sessionId: after.lastSessionId ?? null,
+					lastStatus: after.lastStatus ?? null
+				});
 				return;
 			}
 			const body = await readJson(req);
@@ -801,6 +827,60 @@ export async function apply(ctx, config = {}) {
 		}));
 	}
 
+	/**
+	 * The self-description route.
+	 *
+	 * Everything an agent needs to use this plugin without reading its sources:
+	 * the tools it can call (with their descriptions), the fields a job takes,
+	 * and the HTTP routes with a flag saying which of them a person must be
+	 * behind.
+	 */
+	const manifestHandler = async (req, res) => {
+		if (req.method !== 'GET' && req.method !== 'HEAD') {
+			res.writeHead(405, { allow: 'GET, HEAD' });
+			res.end();
+			return;
+		}
+		sendJson(res, 200, {
+			plugin: name,
+			package: 'dsh-cron-schedule',
+			summary: 'Durable cron schedules: at each due time the harness starts a new chat in a chosen directory and sends it a task, or continues one chat for a recurring task.',
+			tools: toolCatalog.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
+			job: {
+				name: 'string, 1–120 chars — short human label',
+				expression: 'string, 5-field cron, e.g. "*/30 * * * *" — must fire at least once',
+				timeZone: 'IANA zone, e.g. "Europe/Moscow" (default "UTC")',
+				workspacePath: 'absolute directory the chat runs in (created when missing)',
+				prompt: `string, 1–${MAX_PROMPT_CHARS} chars — first user message of each chat`,
+				enabled: 'boolean (default true) — whether the schedule fires',
+				model: '{ provider, model } | null — must be an entry of cron_models / the allow-list; null means the deployment default',
+				alwaysNewChat: 'boolean (default false) — every run starts a fresh chat; otherwise the first run creates one and later runs continue it',
+				sessionId: 'string | null — bind an existing chat (from cron_chats); ignored while alwaysNewChat is on',
+				autoCatchUp: 'boolean — HUMAN ONLY: replay runs missed while DSH was down (the AI tools drop this field)'
+			},
+			fields: ['id', 'name', 'expression', 'description', 'timeZone', 'workspacePath', 'prompt', 'enabled', 'alwaysNewChat', 'overdue', 'missed', 'sessionId', 'nextRunAt', 'lastStatus', 'lastSessionId', 'lastError'],
+			lastStatus: ['started', 'succeeded', 'failed'],
+			endpoints: [
+				{ method: 'GET', path: MANIFEST_PATH, humanOnly: false, purpose: 'this description' },
+				{ method: 'GET', path: JOBS_PATH, humanOnly: false, purpose: 'list schedules with their next run and last outcome' },
+				{ method: 'POST', path: JOBS_PATH, humanOnly: false, purpose: 'create a schedule; ?action=dismiss-missed { id } clears missed runs' },
+				{ method: 'GET', path: `${JOB_PATH_PREFIX}<id>`, humanOnly: false, purpose: 'read one schedule' },
+				{ method: 'POST', path: `${JOB_PATH_PREFIX}<id>/run`, humanOnly: false, purpose: 'run now, out of band; answers sessionId/lastStatus of that run' },
+				{ method: 'POST', path: `${JOB_PATH_PREFIX}<id>`, humanOnly: false, purpose: 'patch a schedule (any subset of the job fields) or toggle enabled' },
+				{ method: 'DELETE', path: `${JOB_PATH_PREFIX}<id>`, humanOnly: false, purpose: 'delete a schedule' },
+				{ method: 'POST', path: `${JOB_PATH_PREFIX}preview`, humanOnly: false, purpose: '{ expression, timeZone } -> description + next occurrences' },
+				{ method: 'GET', path: CHATS_PATH, humanOnly: false, purpose: 'existing chats a schedule may post into' },
+				{ method: 'GET', path: SETTINGS_PATH, humanOnly: false, purpose: 'model allow-list + routable catalog + default model' },
+				{ method: 'POST', path: SETTINGS_PATH, humanOnly: true, purpose: 'change the model allow-list (a person at the Web panel only)' }
+			],
+			notes: [
+				'Schedules are open to any caller: list, create, edit, run and delete all work for the AI too. Human-only: raising autoCatchUp (400 unless a signed browser session) and the model allow-list (POST …/settings).',
+				'Error answers are { error, field? }; a rejected field names itself in `field`.',
+				'Every run is synchronous from the route: when POST …/run answers, job.lastStatus is started | succeeded | failed and job.lastSessionId names the chat the run reached.'
+			]
+		});
+	};
+
 	const chatsHandler = async (req, res) => {
 		if (req.method !== 'GET' && req.method !== 'HEAD') {
 			res.writeHead(405, { allow: 'GET, HEAD' });
@@ -826,6 +906,11 @@ export async function apply(ctx, config = {}) {
 	}), 'cron-schedule: chats route');
 	ctx.effect(() => ctx.webServer.register({
 		kind: 'exact',
+		path: MANIFEST_PATH,
+		handler: manifestHandler
+	}), 'cron-schedule: manifest route');
+	ctx.effect(() => ctx.webServer.register({
+		kind: 'exact',
 		path: SETTINGS_PATH,
 		handler: settingsHandler
 	}), 'cron-schedule: settings route');
@@ -840,7 +925,7 @@ export async function apply(ctx, config = {}) {
 		handler: jobHandler
 	}), 'cron-schedule: job route');
 
-	registerTools(ctx, { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime, listChats });
+	registerTools(ctx, { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime, listChats, toolCatalog });
 }
 
 /**
@@ -852,44 +937,54 @@ export async function apply(ctx, config = {}) {
  * @param deps - store, scheduler, locale, and the view helper.
  */
 function registerTools(ctx, deps) {
-	const { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime, listChats } = deps;
+	const { store, scheduler, locale, toolJob, modelCatalog, allowedModels, routableEntries, runtime, listChats, toolCatalog = [] } = deps;
 	/** One text block. */
 	const text = (value) => [{ type: 'text', text: value }];
-	/** A tool definition in the shape the registry validates. */
-	const tool = (definition) => definition;
 
-	ctx.inject(['tools'], (toolCtx) => {
+	/** Every declared tool; published to the manifest, registered at the end. */
+	const definitions = [];
+	/** Declare one tool; the whole list is registered once it is complete. */
+	const register = (definition) => {
+		definitions.push(definition);
+	};
+
+	/*
+		 * Output schemas use the harness's JSON-Schema subset, and they list
+		 * exactly what `execute` returns: `required` is an array on the object
+		 * (never `required: true` on a property), and with
+		 * `additionalProperties: false` an undeclared key is a failure at call
+		 * time. The test suite checks both against the real returned values.
+		 */
 		const jobShape = {
 			type: 'object',
 			additionalProperties: false,
+			required: ['id', 'name', 'expression', 'description', 'timeZone', 'workspacePath', 'prompt', 'enabled', 'alwaysNewChat', 'overdue', 'missed'],
 			properties: {
-				id: { type: 'string', required: true },
-				name: { type: 'string', required: true },
-				expression: { type: 'string', required: true },
-				description: { type: 'string', required: true },
-				timeZone: { type: 'string', required: true },
-				workspacePath: { type: 'string', required: true },
-				prompt: { type: 'string', required: true },
-				enabled: { type: 'boolean', required: true },
-				model: { type: 'object', additionalProperties: false, properties: {
-					provider: { type: 'string', required: true },
-					model: { type: 'string', required: true }
-				} },
-				nextRunAt: { type: 'number' },
-				lastRunAt: { type: 'number' },
-				lastStatus: { type: 'string' },
-				lastSessionId: { type: 'string' },
-				lastError: { type: 'string' },
+				id: { type: 'string' },
+				name: { type: 'string' },
+				expression: { type: 'string' },
+				description: { type: 'string' },
+				timeZone: { type: 'string' },
+				workspacePath: { type: 'string' },
+				prompt: { type: 'string' },
+				enabled: { type: 'boolean' },
+				alwaysNewChat: { type: 'boolean' },
+				overdue: { type: 'boolean' },
 				missed: { type: 'array', items: { type: 'number' } },
-				overdue: { type: 'boolean', required: true }
+				sessionId: { type: 'string' },
+				nextRunAt: { type: 'number' },
+				lastStatus: { type: 'string', enum: ['started', 'succeeded', 'failed'] },
+				lastSessionId: { type: 'string' },
+				lastError: { type: 'string' }
 			}
 		};
 		const listOutput = {
 			schema: {
 				type: 'object',
 				additionalProperties: false,
+				required: ['jobs'],
 				properties: {
-					jobs: { type: 'array', required: true, items: jobShape }
+					jobs: { type: 'array', items: jobShape }
 				}
 			},
 			render: (_args, value) => text(value.jobs.length === 0
@@ -902,7 +997,7 @@ function registerTools(ctx, deps) {
 				}).join('\n'))
 		};
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_list',
 			description: 'List every cron schedule: id, on/off, cron expression, human description, next run time, and the workspace directory each job runs in.',
 			parameters: {},
@@ -910,9 +1005,9 @@ function registerTools(ctx, deps) {
 			async execute() {
 				return { jobs: store.list().map(toolJob) };
 			}
-		}));
+		});
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_create',
 			description: 'Create a cron schedule. At each due time the harness starts a NEW chat in the given workspace directory and sends it the prompt as the first user message. Use cron_describe first when unsure about an expression, and cron_models to see which models you may pick.',
 			parameters: {
@@ -936,19 +1031,20 @@ function registerTools(ctx, deps) {
 				schema: {
 					type: 'object',
 					additionalProperties: false,
+					required: ['id', 'name', 'expression', 'workspacePath', 'alwaysNewChat'],
 					properties: {
-						id: { type: 'string', required: true },
-						name: { type: 'string', required: true },
-						expression: { type: 'string', required: true },
-						workspacePath: { type: 'string', required: true },
+						id: { type: 'string' },
+						name: { type: 'string' },
+						expression: { type: 'string' },
+						workspacePath: { type: 'string' },
 						nextRunAt: { type: 'number' },
-						alwaysNewChat: { type: 'boolean', required: true },
+						alwaysNewChat: { type: 'boolean' },
 						sessionId: { type: 'string' },
 						provider: { type: 'string' },
 						model: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
+				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${value.nextRunAt === undefined ? 'never' : new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
 			},
 			async execute(args, exec) {
 				const source = { ...args };
@@ -975,64 +1071,84 @@ function registerTools(ctx, deps) {
 					name: fresh.name,
 					expression: fresh.expression,
 					workspacePath: fresh.workspacePath,
-					nextRunAt: fresh.nextRunAt,
 					alwaysNewChat: fresh.alwaysNewChat === true,
+					...(fresh.nextRunAt === undefined ? {} : { nextRunAt: fresh.nextRunAt }),
 					...(fresh.sessionId === undefined ? {} : { sessionId: fresh.sessionId }),
 					...(fresh.model === undefined ? {} : { provider: fresh.model.provider, model: fresh.model.model })
 				};
 			}
-		}));
+		});
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_delete',
-			description: 'Delete one cron schedule by its exact id from cron_list or cron_create. The schedule stops firing immediately; chats it already started are untouched.',
+			description: 'Delete one cron schedule by its id or its exact name. The schedule stops firing immediately; chats it already started are untouched.',
 			parameters: {
-				id: { type: 'string', required: true, description: 'Exact schedule id.' }
+				id: { type: 'string', required: true, description: 'Schedule id from cron_list or cron_create. An exact, unique schedule name is accepted too.' }
 			},
 			output: {
 				schema: {
 					type: 'object',
 					additionalProperties: false,
+					required: ['deleted', 'id'],
 					properties: {
-						deleted: { type: 'boolean', required: true },
-						id: { type: 'string', required: true }
+						deleted: { type: 'boolean' },
+						id: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(value.deleted ? `Deleted cron schedule ${value.id}.` : `No cron schedule with id ${value.id}.`)
+				render: (_args, value) => text(value.deleted ? `Deleted cron schedule ${value.id}.` : `No cron schedule matching ${value.id}.`)
 			},
 			async execute(args) {
-				const id = String(args.id);
-				const deleted = await store.delete(id);
+				const wanted = String(args.id);
+				const existing = findJob(wanted);
+				if (existing === undefined) return { deleted: false, id: wanted };
+				const deleted = await store.delete(existing.id);
 				scheduler.rearm();
-				return { deleted, id };
+				return { deleted, id: existing.id };
 			}
-		}));
+		});
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_run',
-			description: 'Start one cron schedule immediately, out of band, without changing when it fires next. Useful to test a schedule right after creating it.',
+			description: 'Start one cron schedule immediately, out of band, without changing when it fires next. Useful to test a schedule right after creating it. The answer names the chat the run wrote into, so you can point the person at it.',
 			parameters: {
-				id: { type: 'string', required: true, description: 'Exact schedule id.' }
+				id: { type: 'string', required: true, description: 'Schedule id from cron_list or cron_create. An exact, unique schedule name is accepted too.' }
 			},
 			output: {
 				schema: {
 					type: 'object',
 					additionalProperties: false,
+					required: ['started', 'id'],
 					properties: {
-						started: { type: 'boolean', required: true },
-						id: { type: 'string', required: true }
+						started: { type: 'boolean' },
+						id: { type: 'string' },
+						sessionId: { type: 'string' },
+						lastStatus: { type: 'string', enum: ['started', 'succeeded', 'failed'] },
+						lastError: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(value.started ? `Started cron schedule ${value.id} now.` : `No cron schedule with id ${value.id}.`)
+				render: (_args, value) => text(value.started
+					? `Started cron schedule ${value.id} now: ${value.lastStatus === 'succeeded' ? `the run went into chat ${value.sessionId ?? '(unknown)'}` : `the run ${value.lastStatus ?? 'did not finish'}${value.lastError === undefined ? '' : `: ${value.lastError}`}`}.`
+					: `No cron schedule matching ${value.id}.`)
 			},
 			async execute(args) {
-				const id = String(args.id);
-				const started = await scheduler.runNow(id);
-				return { started, id };
+				const wanted = String(args.id);
+				const existing = findJob(wanted);
+				if (existing === undefined) return { started: false, id: wanted };
+				await scheduler.runNow(existing.id);
+				// The run is synchronous here, so the stored record already knows its
+				// outcome: report it instead of making the model call cron_list again.
+				const after = store.get(existing.id);
+				return {
+					started: true,
+					id: existing.id,
+					...(typeof after?.lastSessionId === 'string' ? { sessionId: after.lastSessionId } : {}),
+					...(typeof after?.lastStatus === 'string' ? { lastStatus: after.lastStatus } : {}),
+					...(typeof after?.lastError === 'string' ? { lastError: after.lastError } : {})
+				};
 			}
-		}));
+		});
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_chats',
 			description: 'List existing chats a schedule can post into. Normally you do not need this: a repeating schedule with no chat creates one on its first run and continues it thereafter. Use this only to target a specific existing chat via cron_create sessionId, or to check which chat a schedule is bound to.',
 			parameters: {},
@@ -1040,16 +1156,17 @@ function registerTools(ctx, deps) {
 				schema: {
 					type: 'object',
 					additionalProperties: false,
+					required: ['chats'],
 					properties: {
 						chats: {
 							type: 'array',
-							required: true,
 							items: {
 								type: 'object',
 								additionalProperties: false,
+								required: ['sessionId', 'title'],
 								properties: {
-									sessionId: { type: 'string', required: true },
-									title: { type: 'string', required: true },
+									sessionId: { type: 'string' },
+									title: { type: 'string' },
 									cwd: { type: 'string' }
 								}
 							}
@@ -1067,9 +1184,9 @@ function registerTools(ctx, deps) {
 					...(chat.cwd === undefined ? {} : { cwd: chat.cwd })
 				})) };
 			}
-		}));
+		});
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_models',
 			description: 'List the models you may schedule on. When the person configured an allowed-model list, only those entries are accepted by cron_create; otherwise every model this deployment routes is listed and the deployment default is used when you omit the model.',
 			parameters: {},
@@ -1077,18 +1194,19 @@ function registerTools(ctx, deps) {
 				schema: {
 					type: 'object',
 					additionalProperties: false,
+					required: ['restricted', 'models'],
 					properties: {
-						restricted: { type: 'boolean', required: true },
+						restricted: { type: 'boolean' },
 						models: {
 							type: 'array',
-							required: true,
 							items: {
 								type: 'object',
 								additionalProperties: false,
+								required: ['provider', 'model', 'name'],
 								properties: {
-									provider: { type: 'string', required: true },
-									model: { type: 'string', required: true },
-									name: { type: 'string', required: true }
+									provider: { type: 'string' },
+									model: { type: 'string' },
+									name: { type: 'string' }
 								}
 							}
 						},
@@ -1127,9 +1245,9 @@ function registerTools(ctx, deps) {
 					...(defaultModel === undefined ? {} : { defaultModel })
 				};
 			}
-		}));
+		});
 
-		toolCtx.tools.register(tool({
+		register({
 			name: 'cron_describe',
 			description: 'Explain a cron expression and list its next occurrences without saving anything. Use it to confirm a schedule before cron_create.',
 			parameters: {
@@ -1140,9 +1258,10 @@ function registerTools(ctx, deps) {
 				schema: {
 					type: 'object',
 					additionalProperties: false,
+					required: ['description', 'next'],
 					properties: {
-						description: { type: 'string', required: true },
-						next: { type: 'array', required: true, items: { type: 'string' } }
+						description: { type: 'string' },
+						next: { type: 'array', items: { type: 'string' } }
 					}
 				},
 				render: (_args, value) => text(`${value.description}\nNext: ${value.next.join(', ') || 'never'}`)
@@ -1153,6 +1272,52 @@ function registerTools(ctx, deps) {
 				const next = upcoming(expression, timeZone, Date.now(), 5).map((at) => new Date(at).toISOString());
 				return { description: describeCron(expression, locale), next };
 			}
-		}));
+		});
+	/**
+	 * Publish the declared surface first, then hand it to the registry.
+	 *
+	 * A composition with no `tools` service never fires the inject callback below,
+	 * and such a deployment is exactly who the manifest route is for — so the
+	 * catalog is filled from the declarations, not from what registered. A
+	 * definition the registry rejects is logged here rather than thrown: an
+	 * exception would abandon every later registration, which is how this plugin
+	 * once shipped a panel whose tools the model never saw at all (every output
+	 * schema declared `required: true` inside a property, while the harness
+	 * subset wants `required: [...]` on the object, so the first `register`
+	 * threw). One bad tool must cost one tool, and say so in the log.
+	 */
+	for (const definition of definitions) {
+		toolCatalog.push({ name: definition.name, description: definition.description, parameters: definition.parameters ?? {} });
+	}
+	ctx.inject(['tools'], (toolCtx) => {
+		for (const definition of definitions) {
+			try {
+				toolCtx.tools.register(definition);
+			} catch (error) {
+				toolCtx.logger?.warn?.(`cron-schedule: tool "${definition.name}" was not registered: ${String(error?.message ?? error)}`);
+			}
+		}
 	});
+
+	/**
+	 * Resolve a schedule by id, or by its exact name when that name is unique.
+	 *
+	 * The model has the id from `cron_list`, but a person usually talks about the
+	 * name — accepting both removes a lookup round trip. An ambiguous name is
+	 * refused rather than guessed: deleting or starting the wrong schedule is a
+	 * worse answer than "say which one".
+	 *
+	 * @param wanted - id or exact name from the tool call.
+	 * @returns the stored job, or undefined when nothing matches.
+	 * @throws {Error} when several schedules share that name.
+	 */
+	function findJob(wanted) {
+		const byId = store.get(wanted);
+		if (byId !== undefined) return byId;
+		const matches = store.list().filter((job) => job.name === wanted);
+		if (matches.length > 1) {
+			throw new Error(`${matches.length} schedules are named "${wanted}": ${matches.map((job) => job.id).join(', ')} — pass the id instead`);
+		}
+		return matches[0];
+	}
 }
