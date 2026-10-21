@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const helper = fileURLToPath(new URL("../extensions/single-instance.cjs", import.meta.url));
+const helper = fileURLToPath(new URL("../resources/js/single-instance.cjs", import.meta.url));
 const dir = join(tmpdir(), `dsh-si-${process.pid}`);
 const sock = join(dir, "app.sock");
 const notify = join(dir, "notify");

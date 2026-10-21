@@ -26,6 +26,7 @@
     "filesystem.remove",
     "filesystem.createWatcher",
     "filesystem.getStats",
+    "resources.extractFile",
     "window.hide",
     "window.show",
     "window.focus",
@@ -55,7 +56,6 @@
   "cli": {
     "binaryName": "deepseek-launcher",
     "resourcesPath": "/resources/",
-    "extensionsPath": "/extensions/",
     "builder": {
       "linux": {
         "targets": [

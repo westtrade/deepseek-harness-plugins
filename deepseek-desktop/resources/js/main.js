@@ -12,7 +12,7 @@ let logPath = LOG_FILE_NAME;
 let logTimer = null;
 let serverUrl = null;
 
-// Один инстанс: сокет (extensions/single-instance.cjs) + запасной pid-файл.
+// Один инстанс: сокет (resources/js/single-instance.cjs) + запасной pid-файл.
 let instancePath = INSTANCE_FILE_NAME;
 let isPrimary = false;
 
@@ -112,12 +112,17 @@ async function setupLogPath() {
 
 // ---------- Один инстанс ----------
 
-// Хелпер extensions/single-instance.cjs держит настоящий OS-сокет:
+// Хелпер resources/js/single-instance.cjs держит настоящий OS-сокет:
 // unix socket на Linux/macOS, named pipe на Windows. Эксклюзивность
 // гарантирует ядро (второй bind на тот же адрес невозможен), поэтому
 // гонки двух одновременных запусков здесь нет по определению.
-const INSTANCE_HELPER_REL = "/extensions/single-instance.cjs";
+//
+// Лежит внутри встроенных ресурсов, а не рядом с бинарём: так он есть при
+// любом способе запуска — из dist/, из AppImage, из ~/.local/opt (ярлык).
+// Перед запуском распаковываем его в temp, потому что node нужен реальный файл.
+const INSTANCE_HELPER_RES = "/resources/js/single-instance.cjs";
 
+let helperPath = "dsh-launcher-helper.cjs";
 let socketPath = "dsh-launcher.sock";
 let notifyPath = "dsh-launcher.show";
 let resultPath = "dsh-launcher.result";
@@ -149,9 +154,21 @@ async function setupInstancePaths() {
     /* остался "." */
   }
   const sep = isWindows ? "\\" : "/";
+  helperPath = `${tempDir}${sep}dsh-launcher-helper.cjs`;
   socketPath = socketPathFor(tempDir);
   notifyPath = `${tempDir}${sep}${INSTANCE_FILE_NAME}.show`;
   resultPath = `${tempDir}${sep}${INSTANCE_FILE_NAME}.result`;
+}
+
+// Достаём хелпер из встроенных ресурсов в temp (один раз за запуск).
+async function extractHelper() {
+  try {
+    await Neutralino.resources.extractFile(INSTANCE_HELPER_RES, helperPath);
+    return true;
+  } catch (e) {
+    console.warn("Не удалось распаковать хелпер:", e);
+    return false;
+  }
 }
 
 // Возвращает true, если мы единственный инстанс.
@@ -163,16 +180,20 @@ async function setupInstancePaths() {
 // файл с вердиктом.
 async function claimSingleInstance() {
   const pid = await Neutralino.app.getProcessId().catch(() => 0);
-  const helper = `${window.NL_PATH || "."}${INSTANCE_HELPER_REL}`;
   // cmd.exe не понимает одинарные кавычки, sh — двойные с $; квотируем по платформе.
   const q = isWindows
     ? (s) => `"${String(s)}"`
     : (s) => `'${String(s).split("'").join("'\\''")}'`;
 
   // Обнуляем запрос до проверки: иначе просьба «покажись», пришедшая во время
-  // нашего старта, будет принята за исходное состояние и окно не развернётся.
+  // нашего старта, будет принята за исходное состояние, и окно не развернётся.
   await Neutralino.filesystem.writeFile(notifyPath, "").catch(() => {});
   lastShowToken = "";
+
+  if (!(await extractHelper())) {
+    console.warn("хелпер недоступен, single-instance через pid-файл");
+    return claimByFile(pid);
+  }
 
   const nodePath = await resolveNodePath();
   if (!nodePath) {
@@ -184,7 +205,7 @@ async function claimSingleInstance() {
   const verdictPath = `${resultPath}.${pid}`;
   await Neutralino.filesystem.remove(verdictPath).catch(() => {});
 
-  const cmd = `${q(nodePath)} ${q(helper)} probe ${q(socketPath)} ${q(notifyPath)} ${pid} ${q(verdictPath)}`;
+  const cmd = `${q(nodePath)} ${q(helperPath)} probe ${q(socketPath)} ${q(notifyPath)} ${pid} ${q(verdictPath)}`;
   try {
     await Neutralino.os.spawnProcess(cmd);
   } catch (e) {

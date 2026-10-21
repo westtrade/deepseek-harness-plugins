@@ -9,7 +9,8 @@ const src = readFileSync(new URL("../resources/js/main.js", import.meta.url), "u
 // files: карта путь -> содержимое. exec: подмена ответа os.execCommand.
 // serverAlive: отвечает ли живой dsh на fetch (для findRunningServer).
 // nodeAvailable: находится ли node (resolveNodePath смотрит getStats).
-function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {}, serverAlive = false, nodeAvailable = true }) {
+// helperAvailable: удаётся ли распаковать хелпер из ресурсов.
+function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {}, serverAlive = false, nodeAvailable = true, helperAvailable = true }) {
   const state = { files: { ...files } };
   const el = () => ({
     style: {},
@@ -31,6 +32,13 @@ function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {
     },
     events: { on: () => {} },
     computer: { getKernelInfo: async () => ({ variant: "Linux" }) },
+    // Хелпер лежит во встроенных ресурсах и распаковывается в temp.
+    resources: {
+      extractFile: async (src, dest) => {
+        if (!helperAvailable) throw new Error("NE_RS_FILEXTF");
+        state.files[dest] = "// helper";
+      },
+    },
     os: {
       getPath: async () => "/tmp/",
       getEnv: async () => "",
@@ -100,7 +108,7 @@ const FILE = "/tmp/dsh-launcher.instance";
 // spawnProcess-заглушка хелпера: пишет вердикт в файл, как настоящий хелпер.
 // isFree() — свободен ли сокет; verdicts — очередь для гонки.
 const helperExec = (isFree) => (cmd, state = { files: {} }) => {
-  if (cmd.includes("single-instance.cjs")) {
+  if (cmd.includes("dsh-launcher-helper.cjs")) {
     // Хелпер получает путь к файлу вердикта — проверяем, что он передан.
     const verdict = cmd.match(/'([^']*\.result\.[^']*)'/)?.[1];
     assert.ok(verdict, `result-файл должен передаваться в хелпер: ${cmd}`);
@@ -221,7 +229,7 @@ const helperExec = (isFree) => (cmd, state = { files: {} }) => {
   const a = load({
     pid: 1010,
     exec: (cmd) => {
-      if (cmd.includes("single-instance.cjs")) return { exitCode: 0, stdOut: "PRIMARY:9001" };
+      if (cmd.includes("dsh-launcher-helper.cjs")) return { id: 1, pid: 9001 };
       killed.push(cmd);
       return { exitCode: 0, stdOut: "" };
     },
@@ -248,7 +256,7 @@ const helperExec = (isFree) => (cmd, state = { files: {} }) => {
   const a = load({
     pid: 1111,
     exec: (cmd) => {
-      if (cmd.includes("single-instance.cjs")) return { exitCode: 0, stdOut: "PRIMARY:9001" };
+      if (cmd.includes("dsh-launcher-helper.cjs")) return { id: 1, pid: 9001 };
       killed.push(cmd);
       return { exitCode: 0, stdOut: "" };
     },

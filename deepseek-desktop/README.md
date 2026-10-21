@@ -21,10 +21,12 @@ bun start          # neu run, разработка
 `dist/linux/*.AppImage`.
 
 Один инстанс работает через unix-сокет (named pipe на Windows) в
-[`extensions/single-instance.cjs`](extensions/single-instance.cjs): кто успел
+[`resources/js/single-instance.cjs`](resources/js/single-instance.cjs): кто успел
 занять адрес, тот и основной, повторный запуск просит его показать окно.
-Рантайм ищется по `bin/` (качается `neu update`); клиентская библиотека —
-`resources/neutralino.js`.
+Хелпер лежит во встроенных ресурсах и распаковывается в temp при старте —
+поэтому работает и из `dist/`, и из AppImage, и из копии, поставленной
+ярлыком. Рантайм ищется по `bin/` (качается `neu update`); клиентская
+библиотека — `resources/neutralino.js`.
 
 ## License
 

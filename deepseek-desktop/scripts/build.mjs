@@ -34,8 +34,8 @@ if (!existsSync(join(root, "resources", "neutralino.js"))) {
 
 // Маркер из исходника: он обязан оказаться внутри собранного бинаря.
 const mainJs = readFileSync(join(root, "resources", "js", "main.js"), "utf8");
-const marker = mainJs.match(/const INSTANCE_HELPER_REL = "[^"]+"/)?.[0];
-const extJs = readFileSync(join(root, "extensions", "single-instance.cjs"), "utf8");
+const marker = mainJs.match(/const INSTANCE_HELPER_RES = "[^"]+"/)?.[0];
+const extJs = readFileSync(join(root, "resources", "js", "single-instance.cjs"), "utf8");
 const extMarker = extJs.match(/PRIMARY:\$?\{?child\.pid|"PRIMARY"/)?.[0];
 if (!marker || !extMarker) fail("не нашёл маркеры в исходниках — проверка невозможна");
 
@@ -55,8 +55,10 @@ const binBytes = readFileSync(linuxBin);
 if (!binBytes.includes(Buffer.from(marker))) {
   fail(`в бинаре нет текущего кода (маркер ${marker}) — ресурсы не вшились`);
 }
+// Хелпер живёт во встроенных ресурсах и распаковывается в temp на старте:
+// иначе его не находит копия, установленная из AppImage или в ~/.local/opt.
 if (!binBytes.includes(Buffer.from("single-instance.cjs"))) {
-  fail("в бинаре нет расширения single-instance.cjs");
+  fail("в бинаре нет хелпера single-instance.cjs — он не попал в ресурсы");
 }
 console.log(
   `  ok: ${(binBytes.length / 1024 / 1024).toFixed(1)} МБ, код внутри, изменён ${statSync(linuxBin).mtime.toLocaleString("ru-RU")}`,
