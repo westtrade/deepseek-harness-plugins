@@ -195,6 +195,17 @@ async function claimSingleInstance() {
     return claimByFile(pid);
   }
 
+  // Второй признак живого окна — pid-файл. Нужен, когда держателя сокета нет:
+  // например, приложение запущено старой версией, где хелпер не поднимался.
+  const running = await readInstanceFile();
+  if (running?.pid && running.pid !== pid && (await processAlive(running.pid))) {
+    console.log("single-instance: живой инстанс по pid-файлу, уступаем");
+    await Neutralino.filesystem
+      .writeFile(notifyPath, String(Date.now()))
+      .catch(() => {});
+    return false;
+  }
+
   const nodePath = await resolveNodePath();
   if (!nodePath) {
     console.warn("node не найден, single-instance через pid-файл");
@@ -225,6 +236,9 @@ async function claimSingleInstance() {
     }
     if (out.startsWith("PRIMARY")) {
       console.log("single-instance: primary,", out);
+      // Пишем и pid-файл: если следующая версия или окружение не поднимет
+      // хелпер, она всё равно увидит живое окно.
+      await Neutralino.filesystem.writeFile(instancePath, `${pid}\n`).catch(() => {});
       return true;
     }
     if (out === "SECONDARY") {
