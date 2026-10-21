@@ -106,6 +106,7 @@ window.__ModuleLoader__.load({
 			"job.last": "Last: {status} {time}",
 			"job.lastFailed": "Last run failed: {message}",
 			"job.open": "Open chat",
+			"job.openFailed": "The chat is not in the list yet — open it from the sidebar.",
 			"missed.title": "{count} run(s) were missed while DSH was off",
 			"missed.hint": "The time passed, but no chat was started. Run them or dismiss.",
 			"missed.run": "Run",
@@ -199,6 +200,7 @@ window.__ModuleLoader__.load({
 			"job.last": "上次：{status} {time}",
 			"job.lastFailed": "上次运行失败：{message}",
 			"job.open": "打开会话",
+			"job.openFailed": "会话尚未出现在列表中——请从侧边栏打开。",
 			"missed.title": "DSH 关闭期间错过了 {count} 次运行",
 			"missed.hint": "时间已过，但没有启动会话。可以补跑或忽略。",
 			"missed.run": "补跑",
@@ -345,6 +347,32 @@ window.__ModuleLoader__.load({
 		function messageOf(error) {
 			return typeof error?.message === "string" && error.message.length > 0 ? error.message : null;
 		}
+		/**
+		 * Follow a run into the chat it just started.
+		 *
+		 * The run creates the session on the Host, and the browser learns about it
+		 * through its own session list — normally before this call, but not
+		 * guaranteed. `openSession` refuses an id that list has not seen yet, so the
+		 * navigation is retried until the list catches up (or ~5 s pass) instead of
+		 * leaving the person on the panel with no explanation.
+		 *
+		 * @param ctx - client root context (carries `uiWorkspace`).
+		 * @param sessionId - the chat the run started or wrote into.
+		 * @returns true when the chat was opened.
+		 */
+		async function openChat(ctx, sessionId) {
+			const workspace = ctx.uiWorkspace;
+			if (workspace === undefined || workspace === null || typeof workspace.openSession !== "function") return false;
+			for (let attempt = 0; attempt < 25; attempt += 1) {
+				try {
+					workspace.openSession(sessionId);
+					return true;
+				} catch {
+					await new Promise((resolve) => setTimeout(resolve, 200));
+				}
+			}
+			return false;
+		}
 		/** One host call; throws the server's message on a non-2xx answer. */
 		async function callHost(method, url, body) {
 			const response = await fetch(url, {
@@ -369,15 +397,34 @@ window.__ModuleLoader__.load({
 			}
 			return payload;
 		}
+		/**
+		 * Start a run and follow it into the chat it wrote into.
+		 *
+		 * `POST …/run` answers with the stored job once the run has settled, so
+		 * `lastSessionId` names the chat the prompt actually reached — a fresh one
+		 * for a job that starts a new chat every run, the bound one otherwise. A
+		 * failed run records no such chat, and the person stays on the panel with
+		 * the failure text in the row.
+		 *
+		 * @returns `{ job, chat, opened }` — the stored job, the chat this run
+		 *   reached (null when it failed), and whether that chat was opened.
+		 */
+		async function startRun(jobId, openChat) {
+			const payload = await callHost("POST", `${JOBS_URL}/${encodeURIComponent(jobId)}/run`);
+			const job = payload?.job;
+			const chat = job?.lastStatus === "succeeded" && typeof job.lastSessionId === "string" ? job.lastSessionId : null;
+			return { job, chat, opened: chat === null ? false : await openChat(chat) };
+		}
 		/** One row in the schedules table. */
-		function JobRow({ job, t, editing, chats, defaultModel, onEdit, onChanged, onError }) {
+		function JobRow({ job, t, editing, chats, defaultModel, onEdit, onChanged, onError, openChat }) {
 			const [busy, setBusy] = react.useState(null);
 			const next = formatAt(job.nextRunAt, job.timeZone);
 			const last = formatAt(job.lastRunAt, job.timeZone);
 			const run = async () => {
 				setBusy("run");
 				try {
-					await callHost("POST", `${JOBS_URL}/${encodeURIComponent(job.id)}/run`);
+					const { chat, opened } = await startRun(job.id, openChat);
+					if (chat !== null && !opened) onError(t("job.openFailed"));
 				} catch (error) {
 					onError(error.message);
 				} finally {
@@ -471,7 +518,7 @@ window.__ModuleLoader__.load({
 					el("div", { style: { marginTop: "2px" } }, job.prompt.length > 120 ? `${job.prompt.slice(0, 120)}…` : job.prompt)),
 				el("td", { style: { padding: "8px 10px", verticalAlign: "top" } },
 					el("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } },
-						button(t("job.run"), run, { compact: true, disabled: busy !== null }),
+						button(busy === "run" ? t("job.running") : t("job.run"), run, { compact: true, disabled: busy !== null }),
 						button(editing === true ? t("job.editing") : t("job.edit"), () => onEdit?.(job.id), {
 							compact: true,
 							disabled: busy !== null,
@@ -481,13 +528,14 @@ window.__ModuleLoader__.load({
 						button(t("job.delete"), remove, { compact: true, disabled: busy !== null }))));
 		}
 		/** The missed-runs banner for one job. */
-		function MissedBanner({ job, t, onChanged, onError }) {
+		function MissedBanner({ job, t, onChanged, onError, openChat }) {
 			const [busy, setBusy] = react.useState(false);
 			if (!Array.isArray(job.missed) || job.missed.length === 0) return null;
 			const run = async () => {
 				setBusy(true);
 				try {
-					await callHost("POST", `${JOBS_URL}/${encodeURIComponent(job.id)}/run`);
+					const { chat, opened } = await startRun(job.id, openChat);
+					if (chat !== null && !opened) onError(t("job.openFailed"));
 				} catch (error) {
 					onError(error.message);
 				} finally {
@@ -893,7 +941,7 @@ window.__ModuleLoader__.load({
 					editing ? button(t("form.cancel"), () => onCancel?.(), { disabled: busy }) : null));
 		}
 		/** The panel body: missed banners, the table, and the add form. */
-		function CronPanel({ useWorkspaces, t, pickDirectory }) {
+		function CronPanel({ useWorkspaces, t, pickDirectory, openChat }) {
 			const [state, setState] = react.useState({ jobs: [], loading: true, error: null });
 			/** The model allow-list plus the routable catalog, from the host. */
 			const [settings, setSettings] = react.useState({ allowedModels: [], models: [], default: null, loaded: false });
@@ -988,7 +1036,8 @@ window.__ModuleLoader__.load({
 								job,
 								t,
 								onChanged: load,
-								onError: setNotice
+								onError: setNotice,
+								openChat
 							}))),
 							state.jobs.length === 0
 								? el("div", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "13px" } }, t("panel.empty"))
@@ -1015,7 +1064,8 @@ window.__ModuleLoader__.load({
 												editing: job.id === editingId,
 												onEdit: (id) => setEditingId((current) => (current === id ? null : id)),
 												onChanged: load,
-												onError: setNotice
+												onError: setNotice,
+												openChat
 											});
 											if (job.id !== editingId) return [row];
 											// The editor renders in place, directly under its own row.
@@ -1346,7 +1396,10 @@ window.__ModuleLoader__.load({
 				name: "main",
 				key: PANEL_ID,
 				locale: NS,
-				inject: () => ({ pickDirectory: () => ctx.uiWorkspace.pickDirectory() })
+				inject: () => ({
+					pickDirectory: () => ctx.uiWorkspace.pickDirectory(),
+					openChat: (sessionId) => openChat(ctx, sessionId)
+				})
 			}, CronPanel)), "cron-schedule: panel body");
 			// The model allow-list is a Plugin Configuration card. The tab
 			// dispatches `settings.plugin.item` by settings namespace, so the key

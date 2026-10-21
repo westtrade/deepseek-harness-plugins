@@ -157,6 +157,29 @@ ok('inject factory exposes pickDirectory', typeof injectedProps.pickDirectory ==
 const picked = await injectedProps.pickDirectory();
 ok('pickDirectory bridges to uiWorkspace', picked === '/tmp/picked' && host.pickCalls.length === 1, String(picked));
 
+// --- the run→chat bridge the rows call after "Run now" ---
+ok('inject factory exposes openChat', typeof injectedProps.openChat === 'function');
+// The real `uiWorkspace.openSession` is `sessions.open()` + `layout.selectPanel(null)`,
+// and `sessions.open` throws for an id the browser's list has not seen yet.
+const opened = [];
+const known = new Set(['session-ready']);
+host.ctx.uiWorkspace.openSession = (sessionId) => {
+	opened.push(sessionId);
+	if (!known.has(sessionId)) throw new Error(`sessions.select: unknown session ${sessionId}`);
+};
+ok('openChat opens a chat the list already knows', (await injectedProps.openChat('session-ready')) === true && opened.includes('session-ready'));
+// A chat the browser hears about a moment later still opens: the first attempts
+// are refused by the session list, exactly as they are on a freshly started run.
+opened.length = 0;
+setTimeout(() => known.add('session-late'), 120);
+const late = await injectedProps.openChat('session-late');
+ok('openChat waits for a chat the list is still learning', late === true && opened.length >= 2, `${late} after ${opened.length} attempts`);
+// An older harness without the navigation API must not hang the panel.
+const savedOpenSession = host.ctx.uiWorkspace.openSession;
+delete host.ctx.uiWorkspace.openSession;
+ok('without openSession openChat reports failure instead of hanging', (await injectedProps.openChat('session-ready')) === false);
+host.ctx.uiWorkspace.openSession = savedOpenSession;
+
 // --- dictionaries ---
 const dictionary = host.dictionaries.find((entry) => entry.ns === 'cronSchedule');
 ok('dictionaries registered under the namespace', dictionary !== undefined);
@@ -179,7 +202,7 @@ for (const required of [
 	'settings.dropped',
 	'settings.expand', 'settings.collapse', 'settings.allowedModelsLegend',
 	'column.name', 'column.when', 'column.next', 'column.workspace', 'column.actions',
-	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable',
+	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable', 'job.openFailed',
 	'missed.title', 'missed.hint', 'missed.run', 'missed.dismiss'
 ]) {
 	ok(`copy has ${required}`, enKeys.includes(required) && zhKeys.includes(required));
@@ -192,6 +215,14 @@ for (const preset of ['custom', 'hourly', 'every30', 'daily9', 'weekdays9', 'mon
 // --- the panel's own contract, read off the source ---
 ok('panel polls the host route', source.includes('/api/cron-schedule/jobs'));
 ok('panel offers a run-now call', source.includes('/run`'));
+// --- Run now lands the person in the chat the run wrote into ---
+ok('run now follows the chat it started', source.includes('workspace.openSession(sessionId)'));
+ok('the panel hands the navigation to its rows', source.includes('openChat: (sessionId) => openChat(ctx, sessionId)'));
+ok('only a successful run opens a chat', source.includes('job?.lastStatus === "succeeded" && typeof job.lastSessionId === "string"'));
+ok('both run buttons follow the chat', (source.match(/await startRun\(job\.id, openChat\)/g) ?? []).length === 2);
+ok('navigation is retried while the session list catches up', source.includes('attempt < 25'));
+ok('a run whose chat never opened says so', source.includes('if (chat !== null && !opened) onError(t("job.openFailed"));'));
+ok('the run button reports that it is starting', source.includes('busy === "run" ? t("job.running") : t("job.run")'));
 ok('panel offers the dismiss-missed action', source.includes('action=dismiss-missed'));
 ok('panel renders a missed banner', source.includes('MissedBanner'));
 ok('panel has a preset selector', source.includes('PRESETS.map'));

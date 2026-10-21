@@ -590,6 +590,9 @@ try {
 	const afterRun = await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`);
 	ok('run recorded lastStatus succeeded', afterRun.body.job.lastStatus === 'succeeded', afterRun.body.job.lastStatus);
 	ok('run recorded lastSessionId', afterRun.body.job.lastSessionId === agent.options.sessionId);
+	// The panel follows a run into its chat straight from this answer, without a
+	// second round trip, so the id must ride on the POST response itself.
+	ok('the run answer names the chat to open', run.body.job.lastStatus === 'succeeded' && run.body.job.lastSessionId === agent.options.sessionId, JSON.stringify(run.body.job.lastSessionId));
 	ok('run advanced nextRunAt into the future', afterRun.body.job.nextRunAt > Date.now());
 
 	// --- an explicit chat, and the "always new chat" switch ---
