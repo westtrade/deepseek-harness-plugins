@@ -207,7 +207,9 @@ async function claimSingleInstance() {
 
   const cmd = `${q(nodePath)} ${q(helperPath)} probe ${q(socketPath)} ${q(notifyPath)} ${pid} ${q(verdictPath)}`;
   try {
-    await Neutralino.os.spawnProcess(cmd);
+    // PATH дополняем и здесь: node может быть шимом asdf/bun, которым нужен
+    // свой каталог в PATH. Из ярлыка PATH урезан, и без этого шим не стартует.
+    await Neutralino.os.spawnProcess(cmd, { envs: await envWithFullPath() });
   } catch (e) {
     console.warn("single-instance helper failed:", e);
     return claimByFile(pid);
@@ -240,17 +242,43 @@ async function claimSingleInstance() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Где искать инструменты. Из ярлыка PATH урезан (нет ~/.asdf и ~/.bun), поэтому
+// к нему добавляем известные каталоги установки — тем же списком пользуются
+// и запуск dsh, и поиск node.
+function extraBinDirs(home) {
+  return [
+    `${home}/.local/share/pnpm/bin`,
+    `${home}/.asdf/shims`,
+    `${home}/.asdf/bin`,
+    `${home}/.local/bin`,
+    `${home}/.bun/bin`,
+    `${home}/.proto/shims`,
+    `${home}/.proto/bin`,
+    `${home}/.deno/bin`,
+    `${home}/go/bin`,
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+    "/snap/bin",
+  ].filter(Boolean);
+}
+
 async function resolveNodePath() {
   if (isWindows) return "node";
-  // Без login shell: он синхронный и на старте подвешивает окно.
-  const candidates = [
-    await Neutralino.os.getEnv("NODE").catch(() => ""),
-    "/usr/bin/node",
-    "/usr/local/bin/node",
-    "/opt/homebrew/bin/node",
-  ];
-  for (const p of candidates) {
-    if (!p) continue;
+  const env = await Neutralino.os.getEnvs().catch(() => ({}));
+  const home = env.HOME || (await Neutralino.os.getEnv("HOME").catch(() => ""));
+  // NODE из окружения — самый точный вариант, если задан.
+  const explicit = await Neutralino.os.getEnv("NODE").catch(() => "");
+  const dirs = [
+    ...(env.PATH || "").split(":"),
+    ...extraBinDirs(home),
+    "/opt/homebrew/bin",
+  ].filter(Boolean);
+  for (const dir of explicit ? [explicit] : dirs) {
+    const p = explicit ? dir : `${dir}/node`;
     try {
       await Neutralino.filesystem.getStats(p);
       return p;
@@ -258,22 +286,18 @@ async function resolveNodePath() {
       /* нет такого */
     }
   }
-  // В PATH приложения (собран dsh-окружением).
-  try {
-    const envs = await Neutralino.os.getEnvs();
-    for (const dir of (envs.PATH || "").split(":")) {
-      if (!dir) continue;
-      try {
-        await Neutralino.filesystem.getStats(`${dir}/node`);
-        return `${dir}/node`;
-      } catch {
-        /* нет */
-      }
-    }
-  } catch {
-    /* нет env */
-  }
   return null;
+}
+
+// Окружение с полным PATH — для процессов, которые запускает приложение.
+async function envWithFullPath() {
+  const envs = await Neutralino.os.getEnvs().catch(() => ({}));
+  if (isWindows) return envs;
+  const home = envs.HOME || (await Neutralino.os.getEnv("HOME").catch(() => ""));
+  const merged = new Set(
+    [...(envs.PATH || "").split(":"), ...extraBinDirs(home)].filter(Boolean),
+  );
+  return { ...envs, PATH: Array.from(merged).join(":") };
 }
 
 async function claimByFile(pid) {
@@ -445,27 +469,8 @@ async function startDsh() {
       const HOME =
         envs.HOME || (await Neutralino.os.getEnv("HOME").catch(() => "")) || "";
 
-      const extras = [
-        `${HOME}/.local/share/pnpm/bin`,
-        `${HOME}/.asdf/shims`,
-        `${HOME}/.asdf/bin`,
-        `${HOME}/.local/bin`,
-        `${HOME}/.bun/bin`,
-        `${HOME}/.proto/shims`,
-        `${HOME}/.proto/bin`,
-        `${HOME}/.deno/bin`,
-        `${HOME}/go/bin`,
-        "/usr/local/sbin",
-        "/usr/local/bin",
-        "/usr/sbin",
-        "/usr/bin",
-        "/sbin",
-        "/bin",
-        "/snap/bin",
-      ].filter(Boolean);
-
       const merged = new Set(
-        [...(envs.PATH || "").split(":"), ...extras].filter(Boolean),
+        [...(envs.PATH || "").split(":"), ...extraBinDirs(HOME)].filter(Boolean),
       );
       envs.PATH = Array.from(merged).join(":");
       console.log("Augmented PATH:", envs.PATH);
