@@ -50,7 +50,8 @@
       "hidden": false,
       "resizable": true,
       "exitProcessOnClose": false,
-      "enableInspector": false
+      "enableInspector": false,
+      "newWindowPolicy": "browser"
     }
   },
   "cli": {
