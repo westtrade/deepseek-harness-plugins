@@ -431,11 +431,13 @@ async function checkShowToken() {
 }
 
 async function revealWindow() {
-  // Каждый вызов отдельно: unminimize на неcвёрнутом окне может вернуть ошибку
-  // и не должен мешать show/focus.
+  // Порядок важен: show() сам выходит, если окно уже видимо, а unminimize()
+  // на Linux делает gtk_window_present — он не показывает скрытое окно, только
+  // поднимает видимое. Поэтому сначала show() (вернуть из трея), затем
+  // unminimize()/focus() на случай, если оно свёрнуто в панель.
   for (const step of [
-    () => Neutralino.window.unminimize(),
     () => Neutralino.window.show(),
+    () => Neutralino.window.unminimize(),
     () => Neutralino.window.focus(),
   ]) {
     try {

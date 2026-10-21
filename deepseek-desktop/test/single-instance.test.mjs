@@ -206,13 +206,13 @@ const helperExec = (isFree) => (cmd, state = { files: {} }) => {
   assert.equal(b.state.files[FILE], "666\n", "чужой pid-файл не удалён");
 }
 
-// 7. Разворот окна дергает unminimize/show/focus.
+// 7. Разворот окна: сначала show (вернуть из трея), затем unminimize/focus.
 {
   const calls = [];
   const a = load({ pid: 888, exec: helperExec(() => true), onWindowCall: (c) => calls.push(c) });
   await a.api.setupLogPath();
   await a.api.revealWindow();
-  assert.deepEqual(calls, ["unminimize", "show", "focus"]);
+  assert.deepEqual(calls, ["show", "unminimize", "focus"]);
 }
 
 // 8. Пути: unix socket в temp, notify рядом с pid-файлом.
