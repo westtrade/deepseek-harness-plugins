@@ -10,7 +10,7 @@ const src = readFileSync(new URL("../resources/js/main.js", import.meta.url), "u
 // serverAlive: отвечает ли живой dsh на fetch (для findRunningServer).
 // nodeAvailable: находится ли node (resolveNodePath смотрит getStats).
 // helperAvailable: удаётся ли распаковать хелпер из ресурсов.
-function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {}, serverAlive = false, nodeAvailable = true, helperAvailable = true }) {
+function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {}, serverAlive = false, nodeAvailable = true, helperAvailable = true, onTray = () => {} }) {
   const state = { files: { ...files } };
   const el = () => ({
     style: {},
@@ -44,6 +44,7 @@ function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {
       getEnv: async () => "",
       getEnvs: async () => ({ PATH: "" }),
       // spawnProcess — неблокирующий путь, которым пользуется main.js.
+      setTray: async (opts) => onTray(opts),
       spawnProcess: async (cmd) => {
         if (exec) return exec(cmd, state);
         return { id: 1, pid: 1 };
@@ -84,7 +85,8 @@ function load({ pid, alive = new Set(), files = {}, exec, onWindowCall = () => {
     `${src}
      return { setupLogPath, claimSingleInstance, claimByFile, releaseSingleInstance,
               revealWindow, readInstanceFile, setupInstancePaths, findRunningServer,
-              stopDsh,
+              stopDsh, hideToTray, updateTray,
+              hidden: () => windowHidden,
               isOwner: () => ownsDsh,
               markOwner: (p) => { ownsDsh = true; dshPid = p; } };`,
   )(
@@ -213,6 +215,20 @@ const helperExec = (isFree) => (cmd, state = { files: {} }) => {
   await a.api.setupLogPath();
   await a.api.revealWindow();
   assert.deepEqual(calls, ["show", "unminimize", "focus"]);
+}
+
+// 7b. Надпись в трее отражает состояние окна.
+{
+  const labels = [];
+  const a = load({ pid: 889, exec: helperExec(() => true), onTray: (o) => labels.push(o.menuItems[0].text) });
+  await a.api.updateTray();
+  assert.equal(labels.at(-1), "Свернуть");
+  await a.api.hideToTray();
+  assert.equal(labels.at(-1), "Развернуть");
+  assert.equal(a.api.hidden(), true);
+  await a.api.revealWindow();
+  assert.equal(labels.at(-1), "Свернуть");
+  assert.equal(a.api.hidden(), false);
 }
 
 // 8. Пути: unix socket в temp, notify рядом с pid-файлом.

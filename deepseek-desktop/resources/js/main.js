@@ -446,6 +446,8 @@ async function revealWindow() {
       console.warn("revealWindow step failed:", e);
     }
   }
+  windowHidden = false;
+  await updateTray();
 }
 
 // ---------- Сеть ----------
@@ -564,31 +566,49 @@ async function waitForServerUrl(timeoutSeconds = 60) {
 
 // ---------- Трей ----------
 
-async function setupTray() {
-  try {
-    const base = (window.NL_PATH || "").replace(/\/$/, "");
+// Окно спрятано в трей. От этого зависит надпись в меню: «Развернуть» /
+// «Свернуть». setTray зовёт tray_update, поэтому надпись меняется тем же
+// вызовом, а не отдельным API.
+let windowHidden = false;
 
+async function updateTray() {
+  try {
     await Neutralino.os.setTray({
       icon: TRAY_ICON_REL, // <-- именно icon, не iconPath
       tooltip: "DeepSeek Harness",
       menuItems: [
-        { id: "SHOW", text: "Развернуть" },
+        { id: "SHOW", text: windowHidden ? "Развернуть" : "Свернуть" },
         { id: "EXIT", text: "Закрыть" },
       ],
     });
-
-    Neutralino.events.on("trayMenuItemClicked", (evt) => {
-      console.log("Tray menu clicked:", evt.detail.id);
-      if (evt.detail.id === "SHOW") revealWindow();
-      if (evt.detail.id === "EXIT") {
-        stopDsh().then(() => Neutralino.app.exit());
-      }
-    });
-
-    console.log("Tray icon created successfully");
   } catch (e) {
-    console.error("Tray creation failed:", e);
+    console.error("Tray update failed:", e);
   }
+}
+
+async function hideToTray() {
+  windowHidden = true;
+  // Подпись меняем ДО скрытия: setTray после window.hide() роняет процесс
+  // (SIGSEGV в GTK, проверено на 6.10.0 — setTray после hide).
+  await updateTray();
+  await Neutralino.window.hide().catch(() => {});
+}
+
+async function setupTray() {
+  await updateTray();
+
+  Neutralino.events.on("trayMenuItemClicked", async (evt) => {
+    console.log("Tray menu clicked:", evt.detail.id);
+    if (evt.detail.id === "SHOW") {
+      if (windowHidden) await revealWindow();
+      else await hideToTray();
+    }
+    if (evt.detail.id === "EXIT") {
+      stopDsh().then(() => Neutralino.app.exit());
+    }
+  });
+
+  console.log("Tray icon created successfully");
 }
 
 // ---------- Инициализация ----------
@@ -617,7 +637,7 @@ async function init() {
   // Крестик окна -> свернуть в трей
   Neutralino.events.on("windowClose", async () => {
     console.log("windowClose - hiding to tray");
-    await Neutralino.window.hide();
+    await hideToTray();
   });
 
   // Реальный выход
