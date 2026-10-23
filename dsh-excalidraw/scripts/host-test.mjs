@@ -194,6 +194,17 @@ try {
 
 	const badMethod = await callBoard('POST', '/api/excalidraw/boards/session-alpha', scene);
 	ok('boards reject other methods', badMethod.status === 405, String(badMethod.status));
+
+	// A board can be forgotten, not only emptied: the listing route is how a
+	// caller finds one by hand, so test runs must not leave entries behind.
+	await callBoard('PUT', '/api/excalidraw/boards/session-doomed', scene);
+	ok('the listing shows the doomed board', (await callBoard('GET', '/api/excalidraw/boards')).body.boards.some((entry) => entry.sessionId === 'session-doomed'));
+	const removedBoard = await callBoard('DELETE', '/api/excalidraw/boards/session-doomed');
+	ok('a board can be deleted', removedBoard.status === 200 && removedBoard.body.deleted === true, JSON.stringify(removedBoard.body));
+	ok('a deleted board is gone from the listing', !(await callBoard('GET', '/api/excalidraw/boards')).body.boards.some((entry) => entry.sessionId === 'session-doomed'));
+	ok('a deleted board reads back empty', (await callBoard('GET', '/api/excalidraw/boards/session-doomed')).body.board.elements.length === 0);
+	const removedAgain = await callBoard('DELETE', '/api/excalidraw/boards/session-doomed');
+	ok('deleting twice is honest about it', removedAgain.body.deleted === false);
 	const noSession = await callBoard('GET', '/api/excalidraw/boards/');
 	ok('boards require a session id', noSession.status === 400, String(noSession.status));
 

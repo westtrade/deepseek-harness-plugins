@@ -77,6 +77,22 @@ export async function openBoardStore({ file }) {
 			await persist();
 			return JSON.parse(JSON.stringify(next));
 		},
+		/**
+		 * Forget one chat's board entirely.
+		 *
+		 * Without it a board could only be emptied, never removed, and every test
+		 * run or throw-away chat left an entry behind — which matters because the
+		 * listing route is how a caller finds a board by hand.
+		 *
+		 * @param sessionId - the chat whose board goes away.
+		 * @returns true when a board was there.
+		 */
+		async delete(sessionId) {
+			if (!Object.hasOwn(boards, sessionId)) return false;
+			delete boards[sessionId];
+			await persist();
+			return true;
+		},
 		/** Every board id, most recently changed first. */
 		list() {
 			return Object.keys(boards).sort((left, right) => (boards[right]?.updatedAt ?? 0) - (boards[left]?.updatedAt ?? 0));

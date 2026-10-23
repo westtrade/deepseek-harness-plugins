@@ -186,12 +186,8 @@ try {
 	chrome.kill('SIGKILL');
 }
 
-// Clean the throw-away board back up.
-await fetch(`${baseUrl}/api/excalidraw/boards/${encodeURIComponent(SESSION)}`, {
-	method: 'PUT',
-	headers: { 'content-type': 'application/json' },
-	body: JSON.stringify({ elements: [], appState: {} })
-}).catch(() => {});
+// Drop the throw-away board instead of leaving an empty entry in the listing.
+await fetch(`${baseUrl}/api/excalidraw/boards/${encodeURIComponent(SESSION)}`, { method: 'DELETE' }).catch(() => {});
 
 console.log(`board: pass=${pass} fail=${fail}`);
 if (fail > 0) process.exit(1);

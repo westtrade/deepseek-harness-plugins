@@ -207,6 +207,7 @@ export async function apply(ctx, config = {}) {
 				{ method: 'GET', path: BOARDS_PATH, purpose: 'every board, newest first' },
 				{ method: 'GET', path: `${BOARDS_PREFIX}<sessionId>`, purpose: "read one chat's scene" },
 				{ method: 'PUT', path: `${BOARDS_PREFIX}<sessionId>`, purpose: '{ elements, appState } replaces the scene; skeletons are normalized on load' },
+				{ method: 'DELETE', path: `${BOARDS_PREFIX}<sessionId>`, purpose: 'forget this chat\'s board entirely (a board can also just be emptied with PUT)' },
 				{ method: 'GET', path: `${BASE_PATH}/board.html?session=<sessionId>`, purpose: 'the board page the sidebar tab embeds' }
 			],
 			notes: [
@@ -232,8 +233,13 @@ export async function apply(ctx, config = {}) {
 				sendJson(res, 200, { ok: true, sessionId, board: store.get(sessionId) });
 				return;
 			}
+			if (req.method === 'DELETE') {
+				const removed = await store.delete(sessionId);
+				sendJson(res, 200, { ok: true, sessionId, deleted: removed });
+				return;
+			}
 			if (req.method !== 'PUT') {
-				res.writeHead(405, { allow: 'GET, HEAD, PUT' });
+				res.writeHead(405, { allow: 'GET, HEAD, PUT, DELETE' });
 				res.end();
 				return;
 			}
