@@ -1,0 +1,10 @@
+# dsh-project-cost bundle patch: mount the plugin row into a profile.
+#
+# Install:
+#   dsh plugin --profile <name> add "github:westtrade/deepseek-harness-plugins#main&path:/dsh-project-cost"
+#
+# Tune the row here or override it from your own profile patch by id.
+- insert:
+    - id: project-cost
+      name: dsh-project-cost
+      config: {}

@@ -12,7 +12,8 @@
   "files": [
     "lib",
     "scripts",
-    "README.md"
+    "README.md",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "test": "node scripts/catalog-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
@@ -25,6 +26,9 @@
     "client": {
       "platform": "web",
       "inject": []
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
   },
   "keywords": [

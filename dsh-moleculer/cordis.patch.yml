@@ -1,0 +1,10 @@
+# dsh-moleculer bundle patch: mount the plugin row into a profile.
+#
+# Install:
+#   dsh plugin --profile <name> add "github:westtrade/deepseek-harness-plugins#main&path:/dsh-moleculer"
+#
+# Tune the row here or override it from your own profile patch by id.
+- insert:
+    - id: moleculer
+      name: dsh-moleculer
+      config: {}

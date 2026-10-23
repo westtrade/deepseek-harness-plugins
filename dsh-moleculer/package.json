@@ -9,7 +9,12 @@
     "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "scripts", "README.md"],
+  "files": [
+    "lib",
+    "scripts",
+    "README.md",
+    "cordis.patch.yml"
+  ],
   "scripts": {
     "test": "node scripts/mesh-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
     "test:mesh": "node scripts/mesh-test.mjs",
@@ -19,7 +24,22 @@
   "dependencies": {
     "moleculer": "^0.14.35"
   },
-  "dsh": { "client": { "platform": "web", "inject": [] } },
-  "keywords": ["deepseek-harness", "dsh", "plugin", "moleculer", "mcp", "microservices"],
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "moleculer",
+    "mcp",
+    "microservices"
+  ],
   "license": "MIT"
 }
