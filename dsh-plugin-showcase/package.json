@@ -1,0 +1,39 @@
+{
+  "name": "dsh-plugin-showcase",
+  "version": "0.1.0",
+  "description": "Plugin showcase for DeepSeek Harness: a catalog of community plugins with images, descriptions, stars and install/remove buttons, fed from an awesome-list snapshot",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/catalog-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test:catalog": "node scripts/catalog-test.mjs",
+    "test:host": "node scripts/host-test.mjs",
+    "test:client": "node scripts/client-smoke.mjs",
+    "build:catalog": "node scripts/build-catalog.mjs"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "catalog",
+    "showcase",
+    "marketplace"
+  ],
+  "license": "MIT"
+}

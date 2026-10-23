@@ -106,6 +106,27 @@ node test/cache.test.mjs           # нарезка глав и раскладк
 
 Подробности: [svelte-mcp-local/README.md](svelte-mcp-local/README.md).
 
+## `dsh-plugin-showcase`
+
+Витрина плагинов: страница с каталогом community-плагинов DeepSeek Harness —
+картинка, короткое описание, звёзды, ссылка на GitHub и кнопка
+«Установить» / «Удалить» с постраничным переходом и поиском. Каталог (7501
+запись, 22 категории) собирается из
+[Dominic789654/awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness)
+и лежит снимком в пакете, поэтому витрина работает без сети; звёзды
+подтягиваются с GitHub и кешируются на шесть часов. Кнопка запускает ту же
+команду, что человек набрал бы руками: `dsh plugin --profile web add
+github:owner/repo`; изменение подхватывается после перезапуска профиля.
+
+```sh
+node scripts/build-catalog.mjs      # пересобрать каталог из awesome-списка
+node scripts/catalog-test.mjs       # разбор списка
+node scripts/host-test.mjs          # роуты, пагинация, поиск, профиль
+node scripts/client-smoke.mjs       # клиентский бандл
+```
+
+Подробности: [dsh-plugin-showcase/README.md](dsh-plugin-showcase/README.md).
+
 ## `deepseek-desktop`
 
 Десктопное приложение: запускает `dsh --profile web` и показывает веб-интерфейс
