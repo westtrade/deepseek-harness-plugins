@@ -94,7 +94,8 @@ const vendorEntries = {
 	'react.mjs': `export * from 'react';\nexport { default } from 'react';\n`,
 	'react-dom.mjs': `export * from 'react-dom';\nexport { default } from 'react-dom';\n`,
 	'react-dom-client.mjs': `export * from 'react-dom/client';\nexport { default } from 'react-dom/client';\n`,
-	'jsx-runtime.mjs': `export * from 'react/jsx-runtime';\nexport { default } from 'react/jsx-runtime';\n`
+	'jsx-runtime.mjs': `export * from 'react/jsx-runtime';\nexport { default } from 'react/jsx-runtime';\n`,
+	'jsx-dev-runtime.mjs': `export * from 'react/jsx-dev-runtime';\nexport { default } from 'react/jsx-dev-runtime';\n`
 };
 const vendorSrcDir = path.join(root, 'static-src', 'vendor');
 await rm(vendorSrcDir, { recursive: true, force: true });
@@ -158,6 +159,7 @@ const html = `<!doctype html>
   "react-dom": "/api/excalidraw/vendor/react-dom.mjs",
   "react-dom/client": "/api/excalidraw/vendor/react-dom-client.mjs",
   "react/jsx-runtime": "/api/excalidraw/vendor/jsx-runtime.mjs",
+  "react/jsx-dev-runtime": "/api/excalidraw/vendor/jsx-dev-runtime.mjs",
   "excalidraw-host": "/api/excalidraw/assets/index.js"
 } }
 </script>

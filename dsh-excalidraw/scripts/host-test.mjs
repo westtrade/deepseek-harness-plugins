@@ -206,12 +206,13 @@ try {
 		['/api/excalidraw/vendor/react.mjs', 'text/javascript'],
 		['/api/excalidraw/vendor/react-dom.mjs', 'text/javascript'],
 		['/api/excalidraw/vendor/react-dom-client.mjs', 'text/javascript'],
-		['/api/excalidraw/vendor/jsx-runtime.mjs', 'text/javascript']
+		['/api/excalidraw/vendor/jsx-runtime.mjs', 'text/javascript'],
+		['/api/excalidraw/vendor/jsx-dev-runtime.mjs', 'text/javascript']
 	]) {
 		const vendor = await callBoard('GET', path);
 		ok(`${path} serves`, vendor.status === 200 && vendor.headers['content-type'].startsWith(type) && vendor.raw.length > 1000, `${vendor.status} ${vendor.raw?.length ?? 0}`);
 	}
-	ok('board.html has the import map for React', app.raw.includes('"react": "/api/excalidraw/vendor/react.mjs"') && app.raw.includes('"react-dom/client"'));
+	ok('board.html has the import map for React', app.raw.includes('"react": "/api/excalidraw/vendor/react.mjs"') && app.raw.includes('"react-dom/client"') && app.raw.includes('"react/jsx-dev-runtime"') && app.raw.includes('"react/jsx-runtime"'));
 	ok('board.html maps Excalidraw to the asset tree', app.raw.includes('"excalidraw-host": "/api/excalidraw/assets/index.js"'));
 	ok('static answers revalidate', app.headers['cache-control'] === 'no-cache', String(app.headers['cache-control']));
 	const font = await callBoard('GET', '/api/excalidraw/assets/fonts/Virgil/Virgil-Regular.woff2');
