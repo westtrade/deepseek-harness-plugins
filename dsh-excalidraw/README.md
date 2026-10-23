@@ -127,7 +127,7 @@ ln -sfn ~/deepseek-harness-plugins/dsh-excalidraw \
 ## Проверка
 
 ```sh
-node scripts/host-test.mjs    # API доски, манифест, статика, инструменты: 55
+node scripts/host-test.mjs    # API доски, манифест, удаление, статика, инструменты: 60
 node scripts/client-smoke.mjs # обвязка вкладки, пара «файлы + доска»: 34
 npm run test:board            # доска рисуется и принимает правки агента (headless Chrome, нужен живой dsh web)
 ```
