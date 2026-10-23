@@ -88,6 +88,24 @@ node dsh-moleculer/scripts/client-smoke.mjs    # карточка настрое
 
 Подробности и установка: [dsh-moleculer/README.md](dsh-moleculer/README.md).
 
+## `svelte-mcp-local`
+
+MCP-сервер документации Svelte с локальным кешем: тот же
+[`@sveltejs/mcp`](https://www.npmjs.com/package/@sveltejs/mcp) — те же четыре
+инструмента (`get-documentation`, `list-sections`, `playground-link`,
+`svelte-autofixer`) — но документация читается с диска, а не с `svelte.dev`
+на каждый вызов. Ответы совпадают с сетевыми байт в байт, а при недоступном
+сайте сервер больше не падает. Кеш лежит в пакете снимком на момент сборки.
+
+```sh
+bun install                        # зависимости пакета
+node bin/cli.mjs status            # что в кеше
+node bin/cli.mjs update            # обновить кеш из сети
+node test/cache.test.mjs           # нарезка глав и раскладка кеша
+```
+
+Подробности: [svelte-mcp-local/README.md](svelte-mcp-local/README.md).
+
 ## `deepseek-desktop`
 
 Десктопное приложение: запускает `dsh --profile web` и показывает веб-интерфейс

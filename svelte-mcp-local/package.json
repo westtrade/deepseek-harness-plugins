@@ -1,0 +1,23 @@
+{
+  "name": "svelte-mcp-local",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness MCP server for Svelte documentation with a local cache: the same tools as @sveltejs/mcp, served from disk, refreshed by `svelte-mcp-local update`",
+  "type": "module",
+  "bin": {
+    "svelte-mcp-local": "./bin/cli.mjs"
+  },
+  "scripts": {
+    "update": "node ./bin/cli.mjs update",
+    "test": "node ./test/cache.test.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "cache"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@sveltejs/mcp": "0.1.27"
+  },
+  "license": "MIT"
+}
