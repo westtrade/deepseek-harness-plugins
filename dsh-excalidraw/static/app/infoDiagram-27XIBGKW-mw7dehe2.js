@@ -1,2 +1,0 @@
-import{A,e,D,v}from"./main-0wcnesay.js";import{N}from"./main-xza10ybe.js";var n={parse:A(async(r)=>{let t=await N("info",r);e.debug(t)},"parse")},i={version:"11.17.2"},s=A(()=>i.version,"getVersion"),p={getVersion:s},g=A((r,t,o)=>{e.debug(`rendering info diagram
-`+r);let a=v(t);D(a,100,400,!0),a.append("g").append("text").attr("x",100).attr("y",40).attr("class","version").attr("font-size",32).style("text-anchor","middle").text(`v${o}`)},"draw"),m={draw:g},y={parser:n,db:p,renderer:m};export{y as diagram};

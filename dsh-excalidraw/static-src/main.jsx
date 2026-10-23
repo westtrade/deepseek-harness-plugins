@@ -4,13 +4,13 @@
  * Bundled with `bun build` into `static/app/` (see scripts/vendor.mjs) and
  * loaded inside the sidebar tab's iframe. Everything is bundled: the published
  * `@excalidraw/excalidraw` build imports a dozen npm packages by bare specifier
- * (radix, jotai, roughjs, clsx…), so it cannot be served to a browser as-is —
- * the bundler resolves that graph once, at vendor time.
+ * (radix, jotai, roughjs, clsx…), so it cannot be served to a browser as-is.
  *
- * The board is shared with the agent, so this app has two jobs:
+ * The board is shared with the agent, so this app has three jobs:
  * - persist the person's own strokes (and only those: `onChange` also fires for
  *   cursor and scroll, and re-saving those would overwrite an agent's drawing);
- * - pull in whatever the agent wrote while the tab stayed open.
+ * - pull in whatever the agent wrote while the tab stayed open;
+ * - show the deployment-wide template library and keep it in step, both ways.
  */
 
 import { createRoot } from 'react-dom/client';
@@ -19,7 +19,9 @@ import { Excalidraw, convertToExcalidrawElements, restore } from '@excalidraw/ex
 
 const sessionId = new URLSearchParams(location.search).get('session') ?? '';
 const boardUrl = `/api/excalidraw/boards/${encodeURIComponent(sessionId)}`;
+const libraryUrl = '/api/excalidraw/library';
 const SAVE_DELAY_MS = 800;
+const LIBRARY_SAVE_DELAY_MS = 600;
 const POLL_MS = 1500;
 
 /**
@@ -115,20 +117,106 @@ function pickView(appState) {
 	return view;
 }
 
+/**
+ * Turn stored templates into library items the canvas can show.
+ *
+ * The store keeps whatever the person or the agent wrote (often skeletons), and
+ * Excalidraw needs real elements — so each item goes through the same
+ * normalization the scene does. An item whose elements all fail is dropped
+ * rather than shown empty.
+ *
+ * @param items - stored templates.
+ * @returns Excalidraw library items.
+ */
+function normalizeLibrary(items) {
+	if (!Array.isArray(items)) return [];
+	const out = [];
+	for (const item of items) {
+		if (item === null || typeof item !== 'object') continue;
+		const elements = normalizeElements(item.elements);
+		if (elements.length === 0) continue;
+		out.push({
+			...(typeof item.id === 'string' ? { id: item.id } : {}),
+			status: item.status === 'unpublished' ? 'unpublished' : 'published',
+			name: typeof item.name === 'string' ? item.name : 'Template',
+			created: typeof item.created === 'number' ? item.created : Date.now(),
+			elements
+		});
+	}
+	return out;
+}
+
+/** Identity of a library's content, so an unchanged library is not re-saved. */
+function libraryVersion(items) {
+	return items.map((item) => `${item.id ?? ''}:${item.name}:${item.elements.length}`).join('|');
+}
+
 function App() {
 	const [scene, setScene] = useState(null); // null = loading
+	const [library, setLibrary] = useState([]);
 	const saveTimer = useRef(null);
+	const libraryTimer = useRef(null);
 	const apiRef = useRef(null);
 	/** Content version this tab has already stored (or pulled) — see sceneVersion. */
 	const savedVersion = useRef(null);
 	/** `updatedAt` of the stored scene this tab already shows. */
 	const shownAt = useRef(0);
+	/** Library content this tab already shows, and the server revision behind it. */
+	const libraryVersionRef = useRef('');
+	const libraryRevisionRef = useRef(0);
+	/** True while the tab itself is installing templates, so it does not echo them back. */
+	const installingLibrary = useRef(false);
+
+	/** Read the library from the Host and hand it to the canvas. */
+	const pullLibrary = (api) => fetch(libraryUrl, { cache: 'no-store' })
+		.then((response) => (response.ok ? response.json() : undefined))
+		.then((payload) => {
+			if (payload === undefined) return undefined;
+			const items = normalizeLibrary(payload.items);
+			libraryVersionRef.current = libraryVersion(items);
+			if (typeof payload.revision === 'number') libraryRevisionRef.current = payload.revision;
+			setLibrary(items);
+			// Expose for diagnostics: "did the shared library reach the canvas?"
+			window.__boardLibrary = items;
+			if (api === undefined || api === null) return undefined;
+			installingLibrary.current = true;
+			return api.updateLibrary({ libraryItems: items, merge: false, openLibraryMenu: false })
+				.finally(() => {
+					installingLibrary.current = false;
+				});
+		})
+		.catch(() => undefined);
+
+	/** Persist a library the person edited in Excalidraw's own panel. */
+	const saveLibrary = (items) => {
+		if (installingLibrary.current) return;
+		const version = libraryVersion(items);
+		if (version === libraryVersionRef.current) return;
+		libraryVersionRef.current = version;
+		window.__boardLibrary = items;
+		if (libraryTimer.current !== null) clearTimeout(libraryTimer.current);
+		libraryTimer.current = setTimeout(() => {
+			libraryTimer.current = null;
+			fetch(libraryUrl, {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ items })
+			})
+				.then((response) => (response.ok ? response.json() : undefined))
+				.then((payload) => {
+					if (payload === undefined) return;
+					if (typeof payload.revision === 'number') libraryRevisionRef.current = payload.revision;
+				})
+				.catch(() => setStatusLine('board failed: could not save the library', true));
+		}, LIBRARY_SAVE_DELAY_MS);
+	};
 
 	useEffect(() => {
 		if (sessionId === '') {
 			setStatusLine('no session — open this board from a chat', true);
 			return undefined;
 		}
+		void pullLibrary(undefined);
 		fetch(boardUrl, { cache: 'no-store' })
 			.then((response) => {
 				if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -140,6 +228,7 @@ function App() {
 				const elements = normalizeElements(raw);
 				savedVersion.current = sceneVersion(elements);
 				shownAt.current = typeof board.updatedAt === 'number' ? board.updatedAt : 0;
+				if (typeof payload?.libraryRevision === 'number') libraryRevisionRef.current = payload.libraryRevision;
 				setScene({ elements, appState: pickView(board.appState) });
 				setStatusLine('ready');
 				// Repair what the agent wrote: store the canonical form, so the next
@@ -153,6 +242,7 @@ function App() {
 			});
 		return () => {
 			if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+			if (libraryTimer.current !== null) clearTimeout(libraryTimer.current);
 		};
 	}, []);
 
@@ -173,6 +263,7 @@ function App() {
 			.then((payload) => {
 				// Our own write: never treat it as a remote change and reload it.
 				if (typeof payload?.board?.updatedAt === 'number') shownAt.current = payload.board.updatedAt;
+				if (typeof payload?.libraryRevision === 'number') libraryRevisionRef.current = payload.libraryRevision;
 				setStatusLine('saved');
 			})
 			.catch((error) => setStatusLine(`board failed: could not save — ${String(error?.message ?? error)}`, true));
@@ -190,13 +281,14 @@ function App() {
 	};
 
 	/**
-	 * Follow the board the way a shared document works.
+	 * Follow the board and the library the way a shared document works.
 	 *
 	 * The agent writes to the same scene through the Host, so a tab left open
 	 * would otherwise show a stale picture until it was reopened. This polls the
 	 * stored scene and pulls it in when it is newer than what this tab shows, but
 	 * never while a local edit is still waiting to be saved — the person's own
-	 * strokes always win the race against a refresh.
+	 * strokes always win the race against a refresh. The same answer carries the
+	 * library revision, so templates added by an agent appear without a reload.
 	 */
 	useEffect(() => {
 		if (sessionId === '') return undefined;
@@ -209,6 +301,10 @@ function App() {
 				.then((payload) => {
 					const board = payload?.board;
 					if (board === undefined) return;
+					const revision = typeof payload?.libraryRevision === 'number' ? payload.libraryRevision : undefined;
+					if (revision !== undefined && revision !== libraryRevisionRef.current) {
+						void pullLibrary(api);
+					}
 					const updatedAt = typeof board.updatedAt === 'number' ? board.updatedAt : 0;
 					if (updatedAt <= shownAt.current) return;
 					const elements = normalizeElements(board.elements);
@@ -230,13 +326,14 @@ function App() {
 	return (
 		<div className="ex-root">
 			<Excalidraw
-				initialData={scene}
+				initialData={{ ...scene, libraryItems: library }}
 				excalidrawAPI={(api) => {
 					apiRef.current = api;
 					// Handy for diagnostics: the live scene without React internals.
 					window.__boardApi = api;
 				}}
 				onChange={(elements, appState) => scheduleSave(elements, appState)}
+				onLibraryChange={(items) => saveLibrary(items)}
 			/>
 		</div>
 	);

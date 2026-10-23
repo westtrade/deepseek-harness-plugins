@@ -47,6 +47,15 @@ const scene = {
 	appState: {}
 };
 
+// A template of our own, so the library assertion does not depend on live data.
+const TEMPLATE = `smoke-template-${process.pid}`;
+const templateResponse = await fetch(`${baseUrl}/api/excalidraw/library`, {
+	method: 'POST',
+	headers: { 'content-type': 'application/json' },
+	body: JSON.stringify({ name: TEMPLATE, elements: [{ type: 'rectangle', x: 0, y: 0, width: 60, height: 40 }] })
+});
+const template = (await templateResponse.json()).item;
+
 const written = await fetch(`${baseUrl}/api/excalidraw/boards/${encodeURIComponent(SESSION)}`, {
 	method: 'PUT',
 	headers: { 'content-type': 'application/json' },
@@ -134,6 +143,10 @@ try {
 	const sceneTypes = await evaluate('JSON.stringify((window.__boardApi?.getSceneElements()||[]).map((element) => element.type))');
 	ok('the stored scene reached the canvas', sceneTypes === '["ellipse","text"]', String(sceneTypes));
 
+	// The shared library must reach the canvas, not only the store.
+	const libraryNames = await evaluate('JSON.stringify((window.__boardLibrary||[]).map((item) => item.name))');
+	ok('the shared library reaches the board app', String(libraryNames).includes(TEMPLATE), String(libraryNames));
+
 	const canvas = await evaluate(`(function(){
 		var canvases = [...document.querySelectorAll('canvas')];
 		if (canvases.length === 0) return 'no canvas';
@@ -186,8 +199,9 @@ try {
 	chrome.kill('SIGKILL');
 }
 
-// Drop the throw-away board instead of leaving an empty entry in the listing.
+// Drop the throw-away board and template instead of leaving them behind.
 await fetch(`${baseUrl}/api/excalidraw/boards/${encodeURIComponent(SESSION)}`, { method: 'DELETE' }).catch(() => {});
+await fetch(`${baseUrl}/api/excalidraw/library/${encodeURIComponent(template.id)}`, { method: 'DELETE' }).catch(() => {});
 
 console.log(`board: pass=${pass} fail=${fail}`);
 if (fail > 0) process.exit(1);

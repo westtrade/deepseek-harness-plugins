@@ -1,0 +1,1 @@
+import{A}from"./main-cbwdhkyr.js";import"./main-60ct9382.js";import{ft,hi,qA,mt}from"./main-7hw9n1ed.js";import"./main-nq48r09f.js";import"./main-p126yep5.js";var w={parser:ft,get db(){return new qA(2)},renderer:hi,styles:mt,init:A((t)=>{if(!t.state)t.state={};t.state.arrowMarkerAbsolute=t.arrowMarkerAbsolute},"init")};export{w as diagram};

@@ -162,8 +162,8 @@ try {
 
 	// --- wiring ---
 	ok('board route registered', host.routes.has('prefix:/api/excalidraw'), [...host.routes.keys()].join(' '));
-	ok('two AI tools registered', host.tools.size === 2, [...host.tools.keys()].join(','));
-	for (const toolName of ['excalidraw_read', 'excalidraw_write']) {
+	ok('four AI tools registered', host.tools.size === 4, [...host.tools.keys()].join(','));
+	for (const toolName of ['excalidraw_read', 'excalidraw_write', 'excalidraw_library', 'excalidraw_library_add']) {
 		ok(`tool ${toolName} present`, host.tools.has(toolName));
 	}
 	ok('board route effect registered', host.effects.includes('excalidraw: board route'));
@@ -258,7 +258,7 @@ try {
 	// --- the manifest: everything an agent needs, in one request ---
 	const manifest = await callBoard('GET', '/api/excalidraw/manifest');
 	ok('the manifest serves', manifest.status === 200, String(manifest.status));
-	ok('the manifest lists both tools', Array.isArray(manifest.body.tools) && manifest.body.tools.length === 2, JSON.stringify(manifest.body.tools?.map((tool) => tool.name)));
+	ok('the manifest lists every tool', Array.isArray(manifest.body.tools) && manifest.body.tools.length === 4, JSON.stringify(manifest.body.tools?.map((tool) => tool.name)));
 	ok('the manifest tools carry descriptions', manifest.body.tools.every((tool) => typeof tool.description === 'string' && tool.description.length > 40));
 	ok('the manifest says how to find your board', typeof manifest.body.findingYourBoard?.fromTheTools === 'string' && manifest.body.findingYourBoard.fromTheShell.includes('$DSH_SESSION_ID'));
 	ok('the manifest documents the board listing route', manifest.body.findingYourBoard.byListing.includes('/api/excalidraw/boards'));
@@ -275,6 +275,30 @@ try {
 	ok('the listing names the boards that exist', listing.body.boards.some((entry) => entry.sessionId === 'session-alpha'), JSON.stringify(listing.body.boards));
 	ok('the listing carries a timestamp and a size', listing.body.boards.every((entry) => typeof entry.updatedAt === 'number' && typeof entry.elements === 'number'));
 	ok('the listing is newest first', listing.body.boards[0].updatedAt >= listing.body.boards[listing.body.boards.length - 1].updatedAt);
+
+	// --- the shared library: one list for every chat's board ---
+	const library = await callBoard('GET', '/api/excalidraw/library');
+	ok('the library starts empty', library.status === 200 && Array.isArray(library.body.items) && library.body.items.length === 0, JSON.stringify(library.body).slice(0, 120));
+	const addedTemplate = await callBoard('POST', '/api/excalidraw/library', {
+		name: 'Домик',
+		elements: [{ type: 'rectangle', x: 0, y: 0, width: 80, height: 60 }, { type: 'text', x: 8, y: 16, text: 'дом' }]
+	});
+	ok('a template can be added', addedTemplate.status === 201 && typeof addedTemplate.body.item.id === 'string', JSON.stringify(addedTemplate.body).slice(0, 160));
+	ok('the template keeps its name and elements', addedTemplate.body.item.name === 'Домик' && addedTemplate.body.item.elements.length === 2);
+	ok('the template is published by default', addedTemplate.body.item.status === 'published');
+	ok('adding bumps the revision', addedTemplate.body.revision > 0);
+	const afterAdd = await callBoard('GET', '/api/excalidraw/library');
+	ok('the library lists the template', afterAdd.body.items.length === 1 && afterAdd.body.items[0].id === addedTemplate.body.item.id);
+	ok('the board answer carries the library revision', (await callBoard('GET', '/api/excalidraw/boards/session-alpha')).body.libraryRevision === afterAdd.body.revision);
+	const second = await callBoard('POST', '/api/excalidraw/library', { name: 'Круг', elements: [{ type: 'ellipse', x: 0, y: 0, width: 50, height: 50 }] });
+	ok('the library holds both templates', (await callBoard('GET', '/api/excalidraw/library')).body.items.length === 2);
+	const libraryReplaced = await callBoard('PUT', '/api/excalidraw/library', { items: [{ id: second.body.item.id, name: 'Круг (новый)', elements: second.body.item.elements }] });
+	ok('the library can be replaced wholesale', libraryReplaced.status === 200 && libraryReplaced.body.items.length === 1 && libraryReplaced.body.items[0].name === 'Круг (новый)', JSON.stringify(libraryReplaced.body.items?.map((item) => item.name)));
+	const removedTemplate = await callBoard('DELETE', `/api/excalidraw/library/${encodeURIComponent(second.body.item.id)}`);
+	ok('a template can be deleted', removedTemplate.status === 200 && removedTemplate.body.deleted === true);
+	ok('the library is empty again', (await callBoard('GET', '/api/excalidraw/library')).body.items.length === 0);
+	const badLibraryMethod = await callBoard('PATCH', '/api/excalidraw/library', {});
+	ok('the library rejects unknown methods', badLibraryMethod.status === 405, String(badLibraryMethod.status));
 
 	// --- the AI tools ---
 	const signal = () => ({ signal: new AbortController().signal, agent: { session: { id: 'session-alpha' } } });
@@ -303,6 +327,22 @@ try {
 	ok('excalidraw_write deletes by id', deleted.deleted === 2 && deleted.elementsCount === 2, JSON.stringify(deleted));
 	const cleared = await writeTool.execute({ clear: true }, signal());
 	ok('excalidraw_write clears the board', cleared.elementsCount === 0, JSON.stringify(cleared));
+	const libraryTool = host.tools.get('excalidraw_library');
+	const libraryAddTool = host.tools.get('excalidraw_library_add');
+	const emptyLibrary = await libraryTool.execute({}, signal());
+	ok('the library tool reports an empty library', Array.isArray(emptyLibrary.items) && emptyLibrary.items.length === 0);
+	const addedByTool = await libraryAddTool.execute({ name: 'Танк', elements: [{ type: 'rectangle', x: 0, y: 0, width: 120, height: 60 }] }, signal());
+	ok('the AI can add a template', typeof addedByTool.id === 'string' && addedByTool.libraryCount === 1, JSON.stringify(addedByTool));
+	const listedByTool = await libraryTool.execute({}, signal());
+	ok('the AI sees its template', listedByTool.items.length === 1 && listedByTool.items[0].name === 'Танк' && listedByTool.items[0].elementsCount === 1);
+	const readTemplate = await libraryTool.execute({ id: addedByTool.id }, signal());
+	ok('the AI can read a template in full', Array.isArray(readTemplate.items[0].elements) && readTemplate.items[0].elements[0].type === 'rectangle');
+	const missingTemplate = await libraryTool.execute({ id: 'nope' }, signal()).then(() => undefined, (error) => error);
+	ok('an unknown template is refused', missingTemplate instanceof Error);
+	const emptyTemplate = await libraryAddTool.execute({ name: 'Пусто', elements: [] }, signal()).then(() => undefined, (error) => error);
+	ok('an empty template is refused', emptyTemplate instanceof Error);
+	await callBoard('DELETE', `/api/excalidraw/library/${encodeURIComponent(addedByTool.id)}`);
+
 	const invalidUpsert = await writeTool.execute({ upsert: [null] }, signal()).then(() => undefined, (error) => error);
 	ok('a malformed upsert entry is refused', invalidUpsert instanceof Error, String(invalidUpsert?.message));
 } finally {

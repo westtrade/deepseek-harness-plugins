@@ -42,6 +42,15 @@ export const inject = ['webServer'];
 /** URL prefix under which everything this plugin serves lives. */
 export const BASE_PATH = '/api/excalidraw';
 
+/**
+ * The shared library of templates: one list for every chat's board.
+ *
+ * Excalidraw keeps a library per browser profile; this plugin keeps one per
+ * deployment instead, so a template added from one chat is available in all of
+ * them — and the AI can contribute templates through its own tool.
+ */
+const LIBRARY_PATH = `${BASE_PATH}/library`;
+
 /** The board collection: list the boards that exist. */
 const BOARDS_PATH = `${BASE_PATH}/boards`;
 
@@ -154,6 +163,51 @@ export async function apply(ctx, config = {}) {
 	}
 
 	/**
+	 * `GET/PUT/POST /api/excalidraw/library` — the shared templates.
+	 *
+	 * `GET` reads them, `POST` adds one (`{ name, elements }`), `PUT` replaces the
+	 * whole list (the board app does that when a person edits the library in
+	 * Excalidraw's own panel), and `DELETE …/library/<id>` drops one.
+	 */
+	const libraryHandler = async (req, res) => {
+		const url = new URL(req.url ?? '/', 'http://dsh.invalid');
+		const rest = url.pathname.slice(LIBRARY_PATH.length).replace(/^\/+/, '');
+		try {
+			if (rest !== '') {
+				if (req.method !== 'DELETE') {
+					res.writeHead(405, { allow: 'DELETE' });
+					res.end();
+					return;
+				}
+				const deleted = await store.libraryDelete(decodeURIComponent(rest));
+				sendJson(res, 200, { ok: true, deleted, revision: store.libraryRevision() });
+				return;
+			}
+			if (req.method === 'GET' || req.method === 'HEAD') {
+				sendJson(res, 200, { ok: true, items: store.libraryItems(), revision: store.libraryRevision() });
+				return;
+			}
+			const raw = await readBody(req);
+			const body = raw === undefined ? undefined : JSON.parse(raw);
+			if (req.method === 'POST') {
+				const item = await store.libraryAdd({ name: body?.name, elements: body?.elements });
+				sendJson(res, 201, { ok: true, item, revision: store.libraryRevision() });
+				return;
+			}
+			if (req.method === 'PUT') {
+				const items = await store.libraryReplace(body?.items);
+				sendJson(res, 200, { ok: true, items, revision: store.libraryRevision() });
+				return;
+			}
+			res.writeHead(405, { allow: 'GET, HEAD, POST, PUT, DELETE' });
+			res.end();
+		} catch (error) {
+			ctx.logger.error(error);
+			sendJson(res, 500, { error: String(error?.message ?? error) });
+		}
+	};
+
+	/**
 	 * `GET /api/excalidraw/boards` — every board, newest first.
 	 *
 	 * Finds a board without knowing a session id: an agent can look for the chat
@@ -186,6 +240,15 @@ export async function apply(ctx, config = {}) {
 				fromTheTools: 'excalidraw_read / excalidraw_write default to the calling chat: no session id needed.',
 				fromTheShell: 'The shell environment carries $DSH_SESSION_ID — that is this chat, and its board is /api/excalidraw/boards/$DSH_SESSION_ID.',
 				byListing: `GET ${BOARDS_PATH} lists every board (sessionId, updatedAt, element count), newest first.`
+			},
+			library: {
+				what: 'One shared template library for every chat\'s board. The person sees it in Excalidraw\'s library panel; the AI reads and extends it with excalidraw_library / excalidraw_library_add.',
+				endpoints: [
+					{ method: 'GET', path: LIBRARY_PATH, purpose: 'the templates' },
+					{ method: 'POST', path: LIBRARY_PATH, purpose: '{ name, elements } adds a template' },
+					{ method: 'PUT', path: LIBRARY_PATH, purpose: '{ items } replaces the list (the board app does this when a person edits it)' },
+					{ method: 'DELETE', path: `${LIBRARY_PATH}/<id>`, purpose: 'drop one template' }
+				]
 			},
 			board: {
 				elements: 'array of Excalidraw elements',
@@ -230,7 +293,13 @@ export async function apply(ctx, config = {}) {
 		}
 		try {
 			if (req.method === 'GET' || req.method === 'HEAD') {
-				sendJson(res, 200, { ok: true, sessionId, board: store.get(sessionId) });
+				sendJson(res, 200, {
+					ok: true,
+					sessionId,
+					board: store.get(sessionId),
+					// Cheap signal for the open tab: fetch the library only when it moved.
+					libraryRevision: store.libraryRevision()
+				});
 				return;
 			}
 			if (req.method === 'DELETE') {
@@ -278,6 +347,7 @@ export async function apply(ctx, config = {}) {
 			const url = new URL(req.url ?? '/', 'http://dsh.invalid');
 			const pathname = url.pathname;
 			if (pathname === MANIFEST_PATH) return manifestHandler(req, res);
+			if (pathname === LIBRARY_PATH || pathname.startsWith(`${LIBRARY_PATH}/`)) return libraryHandler(req, res);
 			if (pathname === BOARDS_PATH) return boardsIndexHandler(req, res);
 			if (pathname.startsWith(BOARDS_PREFIX)) return boardsHandler(req, res);
 			return staticHandler(req, res);
@@ -426,6 +496,94 @@ function registerTools(ctx, deps) {
 				};
 			}
 		});
+
+
+	register({
+		name: 'excalidraw_library',
+		description: 'List the shared Excalidraw library: templates (shapes, whole scenes) available on every chat\'s board, with their ids, names and element counts. Pass an id to read one template\'s elements in full, ready to reuse with excalidraw_write.',
+		parameters: {
+			id: { type: 'string', description: 'Optional template id: returns that template\'s elements instead of the summary list.' }
+		},
+		output: {
+			schema: {
+				type: 'object',
+				additionalProperties: false,
+				required: ['items'],
+				properties: {
+					items: {
+						type: 'array',
+						items: {
+							type: 'object',
+							additionalProperties: false,
+							required: ['id', 'name', 'elementsCount'],
+							properties: {
+								id: { type: 'string' },
+								name: { type: 'string' },
+								elementsCount: { type: 'integer' },
+								created: { type: 'number' },
+								elements: { type: 'array', items: elementShape }
+							}
+						}
+					}
+				}
+			},
+			render: (_args, value) => text(value.items.length === 0
+				? 'The shared library is empty.'
+				: value.items.map((item) => `${item.id} | ${item.name} | ${item.elementsCount} element(s)${item.elements === undefined ? '' : `\n${JSON.stringify(item.elements)}`}`).join('\n'))
+		},
+		async execute(args) {
+			const items = store.libraryItems();
+			if (typeof args.id === 'string' && args.id !== '') {
+				const found = items.find((item) => item.id === args.id);
+				if (found === undefined) throw new Error(`no library template "${args.id}"`);
+				return {
+					items: [{
+						id: found.id,
+						name: found.name,
+						elementsCount: found.elements.length,
+						created: found.created,
+						elements: found.elements
+					}]
+				};
+			}
+			return {
+				items: items.map((item) => ({ id: item.id, name: item.name, elementsCount: item.elements.length, created: item.created }))
+			};
+		}
+	});
+
+	register({
+		name: 'excalidraw_library_add',
+		description: 'Add a template to the shared Excalidraw library, so it is available on every chat\'s board (and to other agents). Elements are plain skeletons exactly like excalidraw_write takes; the board converts them with Excalidraw itself when it loads them.',
+		parameters: {
+			name: { type: 'string', required: true, description: 'Short name shown in the library panel.' },
+			elements: { type: 'array', required: true, description: 'The template: element skeletons (type, x, y, width, height, colors, points…).', items: elementShape }
+		},
+		output: {
+			schema: {
+				type: 'object',
+				additionalProperties: false,
+				required: ['id', 'name', 'elementsCount', 'libraryCount'],
+				properties: {
+					id: { type: 'string' },
+					name: { type: 'string' },
+					elementsCount: { type: 'integer' },
+					libraryCount: { type: 'integer' }
+				}
+			},
+			render: (_args, value) => text(`Added library template ${value.id} ("${value.name}") with ${value.elementsCount} element(s); the library now holds ${value.libraryCount}.`)
+		},
+		async execute(args) {
+			if (!Array.isArray(args.elements) || args.elements.length === 0) throw new Error('a template needs at least one element');
+			const item = await store.libraryAdd({ name: args.name, elements: args.elements });
+			return {
+				id: item.id,
+				name: item.name,
+				elementsCount: item.elements.length,
+				libraryCount: store.libraryItems().length
+			};
+		}
+	});
 
 	/*
 	 * Publish first, then hand the list to the registry.
