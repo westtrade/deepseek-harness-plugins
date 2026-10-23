@@ -463,7 +463,19 @@ window.__ModuleLoader__.load({
 
 			return el(
 				"div",
-				{ style: { padding: "16px", display: "flex", flexDirection: "column", gap: "14px" } },
+				{
+					style: {
+						// Панель живёт в колонке с overflow: hidden, поэтому прокручиваемся
+						// сами: иначе 24 карточки выносят пагинацию за нижний край.
+						boxSizing: "border-box",
+						height: "100%",
+						overflowY: "auto",
+						padding: "16px",
+						display: "flex",
+						flexDirection: "column",
+						gap: "14px"
+					}
+				},
 				el(
 					"div",
 					null,
@@ -548,7 +560,22 @@ window.__ModuleLoader__.load({
 						),
 				el(
 					"div",
-					{ style: { display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" } },
+					{
+						style: {
+							// Пагинация закреплена у нижнего края прокручиваемой панели:
+							// иначе при 24 карточках она всегда за кадром и «страниц не видно».
+							position: "sticky",
+							bottom: 0,
+							zIndex: 1,
+							marginTop: "auto",
+							padding: "10px 0 4px",
+							background: "var(--dsw-alias-bg-base, var(--dsw-alias-bg-layer-1, #fff))",
+							display: "flex",
+							gap: "6px",
+							alignItems: "center",
+							flexWrap: "wrap"
+						}
+					},
 					button(t("panel.prev"), () => setPage((current) => Math.max(1, current - 1)), {
 						compact: true,
 						disabled: state.page <= 1
