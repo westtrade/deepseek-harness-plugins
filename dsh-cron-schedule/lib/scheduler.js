@@ -116,6 +116,11 @@ export function createScheduler(options) {
 				lastStatus: 'succeeded',
 				lastSessionId: result?.sessionId,
 				lastError: undefined,
+				// Remember where the setup brief landed, and which version of it, so
+				// the next run on the same chat can skip it (and an edited brief is
+				// re-delivered instead of being silently ignored).
+				...(typeof result?.briefSessionId === 'string' ? { briefSessionId: result.briefSessionId } : {}),
+				...(typeof result?.briefHash === 'string' ? { briefHash: result.briefHash } : {}),
 				// A job that just created its chat remembers it, so the next run
 				// continues the same conversation. A job with `alwaysNewChat`, or
 				// one that already had a chat, reports `bindable: false` and keeps

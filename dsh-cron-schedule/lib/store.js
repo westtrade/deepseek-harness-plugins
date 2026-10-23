@@ -261,6 +261,11 @@ export function normalizeJob(input, base, now, allowed, available) {
 		...(model === undefined ? {} : { model }),
 		createdAt: base?.createdAt ?? now,
 		updatedAt: now,
+		// Bookkeeping written by a run (see runner.js): which chat has the setup
+		// brief, and which version of it. An edit must not forget it, or every
+		// edit would re-send the brief on the next run.
+		...(base?.briefSessionId === undefined ? {} : { briefSessionId: base.briefSessionId }),
+		...(base?.briefHash === undefined ? {} : { briefHash: base.briefHash }),
 		...(base?.nextRunAt === undefined ? {} : { nextRunAt: base.nextRunAt }),
 		...(base?.lastRunAt === undefined ? {} : { lastRunAt: base.lastRunAt }),
 		...(base?.lastStatus === undefined ? {} : { lastStatus: base.lastStatus }),
@@ -368,6 +373,8 @@ function reviveJob(raw) {
 		...(typeof raw.lastStatus === 'string' ? { lastStatus: raw.lastStatus } : {}),
 		...(typeof raw.lastSessionId === 'string' ? { lastSessionId: raw.lastSessionId } : {}),
 		...(typeof raw.lastError === 'string' ? { lastError: raw.lastError } : {}),
+		...(typeof raw.briefSessionId === 'string' ? { briefSessionId: raw.briefSessionId } : {}),
+		...(typeof raw.briefHash === 'string' ? { briefHash: raw.briefHash } : {}),
 		missed: Array.isArray(raw.missed) ? raw.missed.filter((value) => Number.isFinite(value)) : [],
 		runs: Array.isArray(raw.runs) ? raw.runs.filter((entry) => entry !== null && typeof entry === 'object') : []
 	};

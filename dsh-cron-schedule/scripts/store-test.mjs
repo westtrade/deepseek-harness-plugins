@@ -78,6 +78,10 @@ try {
 	ok('an update keeps the brief when the field is absent', normalizeJob({ name: 'renamed' }, withBrief, NOW).initialPrompt === 'Ты — ревьюер');
 	ok('a null clears the brief', normalizeJob({ initialPrompt: null }, withBrief, NOW).initialPrompt === undefined);
 	ok('an update can replace the brief', normalizeJob({ initialPrompt: 'новый' }, withBrief, NOW).initialPrompt === 'новый');
+	// The run's bookkeeping (which chat has the brief, which version) must survive
+	// an edit — otherwise every edit would re-send the brief.
+	const bookkept = normalizeJob({ name: 'renamed' }, { ...withBrief, briefSessionId: 'session-x', briefHash: 'abc123' }, NOW);
+	ok('an edit keeps the brief bookkeeping', bookkept.briefSessionId === 'session-x' && bookkept.briefHash === 'abc123', JSON.stringify({ briefSessionId: bookkept.briefSessionId, briefHash: bookkept.briefHash }));
 
 
 	// --- rejections ---

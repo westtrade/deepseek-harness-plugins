@@ -14,7 +14,7 @@
  * @module dsh-cron-schedule/runner
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 /** Deterministic, greppable session id prefix for scheduled runs. */
 export const SCHEDULED_SESSION_PREFIX = 'session-cron';
@@ -50,6 +50,36 @@ function scheduledMessage(job, text = job.prompt, stage = 'task') {
 			stage
 		})
 	});
+}
+
+/**
+ * A short fingerprint of the setup brief.
+ *
+ * Stored beside the chat it was delivered into, so an edited brief is noticed
+ * and re-delivered instead of silently doing nothing until the chat is reset.
+ *
+ * @param text - the brief.
+ * @returns a short stable digest.
+ */
+export function briefFingerprint(text) {
+	return createHash('sha1').update(text).digest('hex').slice(0, 12);
+}
+
+/**
+ * Does this run have to deliver the brief before the task?
+ *
+ * Yes for a chat that never received it, for a chat the brief changed under,
+ * and for every fresh chat (`alwaysNewChat`). A bound or previously used chat
+ * that already carries the current brief gets the task alone — that is the
+ * whole point of the split.
+ *
+ * @param job - the stored job record.
+ * @param sessionId - the chat this run will write into.
+ * @returns true when the brief must be sent again.
+ */
+function needsBrief(job, sessionId) {
+	if (typeof job.initialPrompt !== 'string' || job.initialPrompt === '') return false;
+	return job.briefSessionId !== sessionId || job.briefHash !== briefFingerprint(job.initialPrompt);
 }
 
 /** Resolve or create the workspace entity for one absolute directory. */
@@ -128,11 +158,11 @@ function agentOptionsFor(runtime, job, fallback) {
  * duplicated into the transcript.
  *
  * @param runtime - resolved services.
- * @param job - the stored job record.
  * @param sessionId - the chat to write into.
+ * @param text - the message body.
  * @param signal - optional caller cancellation.
  */
-async function promptExistingChat(runtime, job, sessionId, signal) {
+async function promptExistingChat(runtime, sessionId, text, signal) {
 	const controller = runtime.sessionController;
 	if (controller === undefined || typeof controller.prompt !== 'function') {
 		throw new Error('writing into an existing chat needs the session controller in this deployment');
@@ -141,7 +171,7 @@ async function promptExistingChat(runtime, job, sessionId, signal) {
 		requestId: randomUUID(),
 		sessionId,
 		mode: 'queue',
-		content: [{ type: 'text', text: job.prompt }]
+		content: [{ type: 'text', text }]
 	}, signal ?? new AbortController().signal);
 }
 
@@ -165,7 +195,9 @@ async function promptExistingChat(runtime, job, sessionId, signal) {
  * @param job - the stored job record.
  * @param options - `signal` (cancellation), `now` (epoch ms, for the id), and
  *   `requestedSessionId` (an explicit chat to bind for this run).
- * @returns `{ sessionId, workspacePath, created, bindable }`.
+ * @returns `{ sessionId, workspacePath, created, bindable, briefSessionId?,
+ *   briefHash? }` — the last two say which chat received this run's setup brief,
+ *   and which version of it, so the store can skip re-sending it.
  */
 export async function runJob(runtime, job, options = {}) {
 	const signal = options.signal;
@@ -174,8 +206,18 @@ export async function runJob(runtime, job, options = {}) {
 	const bound = options.requestedSessionId ?? job.sessionId;
 
 	if (bound !== undefined && job.alwaysNewChat !== true) {
-		await promptExistingChat(runtime, job, bound, signal);
-		return { sessionId: bound, workspacePath: job.workspacePath, created: false, bindable: false };
+		// The chat may predate the brief (the field was added later) or the person
+		// may have rewritten it: deliver it again, as its own turn, before the task.
+		const briefed = needsBrief(job, bound);
+		if (briefed) await promptExistingChat(runtime, bound, job.initialPrompt, signal);
+		await promptExistingChat(runtime, bound, job.prompt, signal);
+		return {
+			sessionId: bound,
+			workspacePath: job.workspacePath,
+			created: false,
+			bindable: false,
+			...(briefed ? { briefSessionId: bound, briefHash: briefFingerprint(job.initialPrompt) } : {})
+		};
 	}
 
 	const workspace = await ensureWorkspace(runtime, job.workspacePath);
@@ -196,6 +238,13 @@ export async function runJob(runtime, job, options = {}) {
 		}
 	});
 	let attached = false;
+	/**
+	 * A fresh chat needs the brief first, then the task, so later runs on this
+	 * chat repeat only the task. `alwaysNewChat` jobs make every run "new", so
+	 * they get both each time — a fresh chat starts without the brief, by
+	 * definition. What was delivered is reported back for the store to record.
+	 */
+	const briefed = typeof job.initialPrompt === 'string' && job.initialPrompt !== '';
 	try {
 		signal?.throwIfAborted();
 		await workspace.attachSession(sessionId);
@@ -205,13 +254,7 @@ export async function runJob(runtime, job, options = {}) {
 		} catch (error) {
 			runtime.logger?.warn?.(`cron-schedule: could not title session "${sessionId}": ${String(error)}`);
 		}
-		// A new chat is the only place the brief has to be read: it is delivered
-		// first, then the task, so later runs on the same chat repeat only the
-		// task. `alwaysNewChat` jobs make every run "new", so they get both each
-		// time — a fresh chat starts without the brief, by definition.
-		if (typeof job.initialPrompt === 'string' && job.initialPrompt !== '') {
-			handle.agent.followup(scheduledMessage(job, job.initialPrompt, 'init'));
-		}
+		if (briefed) handle.agent.followup(scheduledMessage(job, job.initialPrompt, 'init'));
 		handle.agent.followup(scheduledMessage(job));
 	} catch (error) {
 		// Roll the half-created session back so a failed run leaves no ghost chat.
@@ -231,5 +274,11 @@ export async function runJob(runtime, job, options = {}) {
 	}
 	// `bindable` tells the caller to remember this chat for the job — but not
 	// when the box is ticked, since that job wants a fresh chat every time.
-	return { sessionId, workspacePath: workspace.path, created: true, bindable: job.alwaysNewChat !== true };
+	return {
+		sessionId,
+		workspacePath: workspace.path,
+		created: true,
+		bindable: job.alwaysNewChat !== true,
+		...(briefed ? { briefSessionId: sessionId, briefHash: briefFingerprint(job.initialPrompt) } : {})
+	};
 }

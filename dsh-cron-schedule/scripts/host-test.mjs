@@ -732,6 +732,33 @@ try {
 	});
 	ok('an oversized brief is refused on its own field', tooLongBrief.status === 400 && tooLongBrief.body.field === 'initialPrompt', `${tooLongBrief.status} ${JSON.stringify(tooLongBrief.body)}`);
 
+	// The brief also reaches a chat that predates it — the field was added to the
+	// plugin long after that chat was created, or the person bound the chat by
+	// hand. It is delivered once, then the chat gets the task alone.
+	const lateBrief = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Поздний бриф', expression: '0 13 * * *', workspacePath: path.join(dir, 'proj'),
+		prompt: 'задача', initialPrompt: 'бриф для старого чата', sessionId: 'session-alpha'
+	}, { trusted: true });
+	ok('the late brief is stored', lateBrief.status === 201 && lateBrief.body.job.initialPrompt === 'бриф для старого чата', JSON.stringify(lateBrief.body?.job?.initialPrompt));
+	const promptsBeforeLate = host.prompts.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}/run`);
+	ok('a chat that predates the brief receives it first', host.prompts.length === promptsBeforeLate + 2
+		&& host.prompts.at(-2).content[0].text === 'бриф для старого чата'
+		&& host.prompts.at(-1).content[0].text === 'задача',
+		JSON.stringify(host.prompts.slice(promptsBeforeLate).map((entry) => entry.content[0].text)));
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}/run`);
+	ok('once delivered, the same chat gets the task alone', host.prompts.length === promptsBeforeLate + 3
+		&& host.prompts.at(-1).content[0].text === 'задача',
+		JSON.stringify(host.prompts.slice(promptsBeforeLate).map((entry) => entry.content[0].text)));
+	// An edited brief must not be silently ignored under an existing chat.
+	const editedBrief = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}`, { initialPrompt: 'обновлённый бриф' });
+	ok('editing the brief is accepted', editedBrief.status === 200 && editedBrief.body.job.initialPrompt === 'обновлённый бриф', JSON.stringify(editedBrief.body?.job?.initialPrompt));
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}/run`);
+	ok('an edited brief is delivered again', host.prompts.length === promptsBeforeLate + 5
+		&& host.prompts.at(-2).content[0].text === 'обновлённый бриф'
+		&& host.prompts.at(-1).content[0].text === 'задача',
+		JSON.stringify(host.prompts.slice(promptsBeforeLate).map((entry) => entry.content[0].text)));
+
 	// --- an explicit chat, and the "always new chat" switch ---
 	const boundJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
 		name: 'В указанный чат', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
