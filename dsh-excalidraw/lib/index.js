@@ -76,6 +76,7 @@ function sendJson(res, status, payload) {
 const MIME = {
 	'.html': 'text/html; charset=utf-8',
 	'.js': 'text/javascript; charset=utf-8',
+	'.mjs': 'text/javascript; charset=utf-8',
 	'.css': 'text/css; charset=utf-8',
 	'.json': 'application/json; charset=utf-8',
 	'.woff2': 'font/woff2',
@@ -119,7 +120,12 @@ export async function apply(ctx, config = {}) {
 		try {
 			const body = await readFile(resolved);
 			const ext = path.extname(resolved).toLowerCase();
-			res.writeHead(200, { 'content-type': MIME[ext] ?? 'application/octet-stream' });
+			// Never keep a stale board page or bundle: the plugin may be rebuilt
+			// without a host restart, so the browser must revalidate.
+			res.writeHead(200, {
+				'content-type': MIME[ext] ?? 'application/octet-stream',
+				'cache-control': 'no-cache'
+			});
 			res.end(body);
 		} catch (error) {
 			if (error?.code === 'ENOENT') {

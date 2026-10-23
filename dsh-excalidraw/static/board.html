@@ -8,14 +8,20 @@
 <style>
   html, body, #root { height: 100%; margin: 0; }
   .ex-root { position: relative; height: 100%; }
-  .ex-status { position: absolute; top: 8px; right: 8px; z-index: 2; font: 12px/1.4 system-ui, sans-serif; color: #666; background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 8px; pointer-events: none; }
-  .ex-status-loading, .ex-status-no-session { left: 8px; right: auto; }
+  .ex-status { position: absolute; top: 8px; left: 8px; z-index: 20; font: 12px/1.4 system-ui, sans-serif; color: #333; background: rgba(255,255,255,.9); padding: 3px 8px; border-radius: 8px; pointer-events: none; }
+  .ex-status-error { color: #b00020; }
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div class="ex-status">Loading…</div></div>
 <script type="importmap">
-{ "imports": { "excalidraw-host": "/api/excalidraw/assets/index.js" } }
+{ "imports": {
+  "react": "/api/excalidraw/vendor/react.mjs",
+  "react-dom": "/api/excalidraw/vendor/react-dom.mjs",
+  "react-dom/client": "/api/excalidraw/vendor/react-dom-client.mjs",
+  "react/jsx-runtime": "/api/excalidraw/vendor/jsx-runtime.mjs",
+  "excalidraw-host": "/api/excalidraw/assets/index.js"
+} }
 </script>
 <script type="module" src="/api/excalidraw/board-app.js"></script>
 </body>

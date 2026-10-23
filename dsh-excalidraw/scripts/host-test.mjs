@@ -202,6 +202,18 @@ try {
 	ok('the Excalidraw prod build serves', asset.status === 200 && asset.headers['content-type'].startsWith('text/javascript') && asset.raw.length > 100000, `${asset.status} ${asset.raw?.length ?? 0}`);
 	const css = await callBoard('GET', '/api/excalidraw/assets/index.css');
 	ok('the Excalidraw styles serve', css.status === 200 && css.headers['content-type'].startsWith('text/css'));
+	for (const [path, type] of [
+		['/api/excalidraw/vendor/react.mjs', 'text/javascript'],
+		['/api/excalidraw/vendor/react-dom.mjs', 'text/javascript'],
+		['/api/excalidraw/vendor/react-dom-client.mjs', 'text/javascript'],
+		['/api/excalidraw/vendor/jsx-runtime.mjs', 'text/javascript']
+	]) {
+		const vendor = await callBoard('GET', path);
+		ok(`${path} serves`, vendor.status === 200 && vendor.headers['content-type'].startsWith(type) && vendor.raw.length > 1000, `${vendor.status} ${vendor.raw?.length ?? 0}`);
+	}
+	ok('board.html has the import map for React', app.raw.includes('"react": "/api/excalidraw/vendor/react.mjs"') && app.raw.includes('"react-dom/client"'));
+	ok('board.html maps Excalidraw to the asset tree', app.raw.includes('"excalidraw-host": "/api/excalidraw/assets/index.js"'));
+	ok('static answers revalidate', app.headers['cache-control'] === 'no-cache', String(app.headers['cache-control']));
 	const font = await callBoard('GET', '/api/excalidraw/assets/fonts/Virgil/Virgil-Regular.woff2');
 	ok('a font serves', font.status === 200 && font.headers['content-type'] === 'font/woff2', `${font.status} ${font.headers['content-type']}`);
 	const missing = await callBoard('GET', '/api/excalidraw/assets/nope.js');

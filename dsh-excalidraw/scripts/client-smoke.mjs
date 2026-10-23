@@ -145,10 +145,11 @@ const t = (key) => key;
 const noSession = body.component({ sessionId: undefined, t });
 ok('without a session the body explains', noSession.children.includes('tab.noSession'));
 const withSession = body.component({ sessionId: 'session-123', t });
-const frame = withSession.type === 'iframe' ? withSession : undefined;
-ok('with a session the body renders an iframe', frame !== undefined);
+ok('with a session the body renders a sized wrapper', withSession.type === 'div' && withSession.props.style?.minHeight === '360px');
+const frame = withSession.children?.[0];
+ok('the wrapper contains the iframe', frame?.type === 'iframe');
 ok('the iframe points at the board app for this chat', typeof frame.props.src === 'string' && frame.props.src === '/api/excalidraw/board.html?session=session-123', frame.props.src);
-ok('the iframe fills the tab', frame.props.style?.width === '100%' && frame.props.style?.height === '100%');
+ok('the iframe fills the wrapper', frame.props.style?.width === '100%' && frame.props.style?.height === '100%' && frame.props.style?.position === 'absolute');
 ok('the title renders the copy', title.component({ t }).children.includes('tab.title'));
 
 console.log(`client: pass=${pass} fail=${fail}`);

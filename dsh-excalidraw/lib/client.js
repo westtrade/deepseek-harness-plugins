@@ -77,11 +77,20 @@ window.__ModuleLoader__.load({
 					}
 				}, t("tab.noSession"));
 			}
-			return el("iframe", {
+			// The tab body's own height is not guaranteed, so the board lives in a
+			// box that always has room: the iframe fills it absolutely.
+			return el("div", {
+				style: {
+					position: "relative",
+					height: "100%",
+					minHeight: "360px",
+					overflow: "hidden"
+				}
+			}, el("iframe", {
 				src: `${BOARD_URL}?session=${encodeURIComponent(sessionId)}`,
 				title: t("tab.title"),
-				style: { width: "100%", height: "100%", border: "0", display: "block", background: "#fff" }
-			});
+				style: { position: "absolute", inset: 0, width: "100%", height: "100%", border: "0", display: "block", background: "#fff" }
+			}));
 		}
 
 		/** The tab chip title. */
