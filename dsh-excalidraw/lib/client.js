@@ -102,7 +102,8 @@ window.__ModuleLoader__.load({
 				priority: "extension",
 				title: () => t("tab.title"),
 				guide: [{
-					order: 40,
+					// Right after the files tab in the “add tab” compass.
+					order: 15,
 					title: () => t("tab.guide"),
 					description: () => t("tab.guideDescription"),
 					icon: BoardGlyph
