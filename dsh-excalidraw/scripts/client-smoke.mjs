@@ -31,7 +31,10 @@ function ok(label, condition, extra = '') {
 /** Minimal React stand-in: the bundle only calls createElement/useState. */
 const reactStub = {
 	createElement: (type, props, ...children) => ({ type, props, children }),
-	useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}]
+	useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+	// Effects run immediately: the pairing assertion below depends on it.
+	useEffect: (run) => { run(); },
+	useRef: (value) => ({ current: value })
 };
 
 /** Fake client context recording every registration. */
@@ -142,15 +145,29 @@ for (const required of ['tab.title', 'tab.guide', 'tab.guideDescription', 'tab.l
 
 // --- the body renders an iframe for the right session ---
 const t = (key) => key;
-const noSession = body.component({ sessionId: undefined, t });
-ok('without a session the body explains', noSession.children.includes('tab.noSession'));
-const withSession = body.component({ sessionId: 'session-123', t });
+// The seat always injects this hook; here it stands in for the tab's actions.
+const openedTabs = [];
+const useTabInfo = () => ({ tab: { id: 'tab-1', sessionId: 'session-123', actions: { openTab: (kind) => openedTabs.push(kind) } } });
+const noSession = body.component({ sessionId: undefined, t, useTabInfo });
+ok('without a session the body explains', Array.isArray(noSession.children) && noSession.children.includes('tab.noSession'), JSON.stringify(noSession).slice(0, 160));
+const withSession = body.component({ sessionId: 'session-123', t, useTabInfo });
 ok('with a session the body renders a sized wrapper', withSession.type === 'div' && withSession.props.style?.minHeight === '360px');
 const frame = withSession.children?.[0];
 ok('the wrapper contains the iframe', frame?.type === 'iframe');
 ok('the iframe points at the board app for this chat', typeof frame.props.src === 'string' && frame.props.src === '/api/excalidraw/board.html?session=session-123', frame.props.src);
 ok('the iframe fills the wrapper', frame.props.style?.width === '100%' && frame.props.style?.height === '100%' && frame.props.style?.position === 'absolute');
 ok('the title renders the copy', title.component({ t }).children.includes('tab.title'));
+// Opening the board pairs it with the files tab in the same pane, once.
+ok('the board opens the files tab beside it', openedTabs.length === 1 && openedTabs[0] === 'files', JSON.stringify(openedTabs));
+body.component({ sessionId: 'session-123', t, useTabInfo });
+ok('the pairing happens once per chat', openedTabs.length === 1, JSON.stringify(openedTabs));
+const otherChat = () => ({ tab: { id: 'tab-2', sessionId: 'session-999', actions: { openTab: (kind) => openedTabs.push(kind) } } });
+body.component({ sessionId: 'session-999', t, useTabInfo: otherChat });
+ok('another chat pairs itself too', openedTabs.length === 2 && openedTabs[1] === 'files', JSON.stringify(openedTabs));
+// A deployment without the files tab must not break the board.
+const bare = () => ({ tab: { id: 'tab-3', actions: { openTab: () => { throw new Error('no such kind'); } } } });
+body.component({ sessionId: 'session-bare', t, useTabInfo: bare });
+ok('a failing pairing is swallowed', true);
 
 console.log(`client: pass=${pass} fail=${fail}`);
 if (fail > 0) process.exit(1);

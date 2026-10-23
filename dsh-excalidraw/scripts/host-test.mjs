@@ -13,6 +13,9 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 import { apply } from '../lib/index.js';
 
 let pass = 0;
@@ -195,26 +198,41 @@ try {
 
 	// --- the static board app ---
 	const app = await callBoard('GET', '/api/excalidraw/board.html');
-	ok('board.html serves', app.status === 200 && app.headers['content-type'].startsWith('text/html') && app.raw.includes('excalidraw-host'), `${app.status} ${app.headers['content-type']}`);
-	const bundle = await callBoard('GET', '/api/excalidraw/board-app.js');
-	ok('board app bundle serves', bundle.status === 200 && bundle.headers['content-type'].startsWith('text/javascript') && bundle.raw.includes('excalidraw-host'));
-	const asset = await callBoard('GET', '/api/excalidraw/assets/index.js');
-	ok('the Excalidraw prod build serves', asset.status === 200 && asset.headers['content-type'].startsWith('text/javascript') && asset.raw.length > 100000, `${asset.status} ${asset.raw?.length ?? 0}`);
-	const css = await callBoard('GET', '/api/excalidraw/assets/index.css');
-	ok('the Excalidraw styles serve', css.status === 200 && css.headers['content-type'].startsWith('text/css'));
-	for (const [path, type] of [
-		['/api/excalidraw/vendor/react.mjs', 'text/javascript'],
-		['/api/excalidraw/vendor/react-dom.mjs', 'text/javascript'],
-		['/api/excalidraw/vendor/react-dom-client.mjs', 'text/javascript'],
-		['/api/excalidraw/vendor/jsx-runtime.mjs', 'text/javascript'],
-		['/api/excalidraw/vendor/jsx-dev-runtime.mjs', 'text/javascript']
-	]) {
-		const vendor = await callBoard('GET', path);
-		ok(`${path} serves`, vendor.status === 200 && vendor.headers['content-type'].startsWith(type) && vendor.raw.length > 1000, `${vendor.status} ${vendor.raw?.length ?? 0}`);
-	}
-	ok('board.html has the import map for React', app.raw.includes('"react": "/api/excalidraw/vendor/react.mjs"') && app.raw.includes('"react-dom/client"') && app.raw.includes('"react/jsx-dev-runtime"') && app.raw.includes('"react/jsx-runtime"'));
-	ok('board.html maps Excalidraw to the asset tree', app.raw.includes('"excalidraw-host": "/api/excalidraw/assets/index.js"'));
+	ok('board.html serves', app.status === 200 && app.headers['content-type'].startsWith('text/html'), `${app.status} ${app.headers['content-type']}`);
+	ok('board.html loads the bundled app', app.raw.includes('/api/excalidraw/app/main.js'));
+	// Without the stylesheet the wrapper has no height, the canvas grows to a
+	// nonsense size and the board draws nothing (it looked blank for a while).
+	ok('board.html links the Excalidraw stylesheet', app.raw.includes('/api/excalidraw/app/excalidraw.css'));
+	ok('board.html gives the board wrapper a height', /\.ex-root\s*\{[^}]*height:\s*100%/.test(app.raw));
+	ok('board.html points Excalidraw at the asset tree', app.raw.includes('EXCALIDRAW_ASSET_PATH = "/api/excalidraw/assets/"'));
+	// The page installs its error hook before the module graph, so a bundle that
+	// fails to load says so instead of sitting on "Loading…" (which it once did).
+	ok('board.html installs the error hook before the bundle', app.raw.indexOf('__boardStatus') < app.raw.indexOf('/api/excalidraw/app/main.js'));
 	ok('static answers revalidate', app.headers['cache-control'] === 'no-cache', String(app.headers['cache-control']));
+
+	const entry = await callBoard('GET', '/api/excalidraw/app/main.js');
+	ok('the bundled entry serves', entry.status === 200 && entry.headers['content-type'].startsWith('text/javascript') && entry.raw.length > 200000, `${entry.status} ${entry.raw?.length ?? 0}`);
+	// Self-contained: everything Excalidraw imports from npm is in the bundle, so
+	// no bare specifier may survive (the browser has no way to resolve one).
+	ok('the bundle carries Excalidraw', entry.raw.includes('Excalidraw'));
+	// Only real import statements matter: the bundle also carries prose that
+	// mentions a package name (zustand's deprecation warning, for one).
+	const bareSpecifiers = [...entry.raw.matchAll(/(?:^|[;}])\s*import\s*(?:[^"'\`]*?from\s*)?"([^"]+)"/g)]
+		.map((match) => match[1])
+		.filter((specifier) => !specifier.startsWith('.') && !specifier.startsWith('/'));
+	ok('the bundle carries no bare imports', bareSpecifiers.length === 0, bareSpecifiers.slice(0, 5).join(','));
+	ok('the bundle is a production build', !entry.raw.includes('jsxDEV') && !entry.raw.includes('__DEV__'));
+
+	// A chunk from the split graph (locales/mermaid) must resolve from the same tree.
+	const { readdir } = await import('node:fs/promises');
+	const appDir = path.join(here, '..', 'static', 'app');
+	const chunkName = (await readdir(appDir)).find((name) => name.startsWith('main-') && name.endsWith('.js'));
+	const chunk = await callBoard('GET', `/api/excalidraw/app/${chunkName}`);
+	ok('a split chunk serves', chunk.status === 200 && chunk.headers['content-type'].startsWith('text/javascript'), `${chunk.status} ${chunkName}`);
+
+	const stylesheet = await callBoard('GET', '/api/excalidraw/app/excalidraw.css');
+	ok('the stylesheet serves', stylesheet.status === 200 && stylesheet.headers['content-type'].startsWith('text/css') && stylesheet.raw.includes('.excalidraw'), `${stylesheet.status} ${stylesheet.raw?.length ?? 0}`);
+
 	const font = await callBoard('GET', '/api/excalidraw/assets/fonts/Virgil/Virgil-Regular.woff2');
 	ok('a font serves', font.status === 200 && font.headers['content-type'] === 'font/woff2', `${font.status} ${font.headers['content-type']}`);
 	const missing = await callBoard('GET', '/api/excalidraw/assets/nope.js');

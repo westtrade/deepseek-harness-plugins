@@ -19,7 +19,8 @@
     "test": "node scripts/host-test.mjs && node scripts/client-smoke.mjs",
     "test:host": "node scripts/host-test.mjs",
     "test:client": "node scripts/client-smoke.mjs",
-    "vendor": "node scripts/vendor.mjs"
+    "vendor": "node scripts/vendor.mjs",
+    "test:board": "node scripts/board-smoke.mjs"
   },
   "dsh": {
     "client": {

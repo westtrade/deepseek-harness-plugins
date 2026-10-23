@@ -1,21 +1,19 @@
 /**
- * Vendor the Excalidraw assets and build the board host app.
+ * Vendor the Excalidraw assets and build the board app.
  *
- * 1. Copies the production build of `@excalidraw/excalidraw` (served from
- *    `static/assets/`, including its chunks, locales and fonts) from the
- *    workspace `node_modules`. The CJK font (Xiaolai, ~13 MB) is skipped to
- *    keep the plugin lean; the remaining fonts cover Latin/Cyrillic UIs.
- * 2. Builds ESM vendor builds of React/React-DOM from the same `node_modules`
- *    (the Excalidraw prod build imports those as bare specifiers; the board
- *    page maps them to these files).
- * 3. Builds `static-src/main.jsx` into `static/board-app.js` with `bun build`
- *    — React and Excalidraw stay external, so the page's import map provides
- *    one shared instance of each.
- * 4. Writes `static/board.html` — the iframe document the sidebar tab loads,
- *    with the import map wiring everything together.
+ * The published `@excalidraw/excalidraw` build is *not* a standalone browser
+ * bundle: it imports a dozen npm packages by bare specifier (radix, jotai,
+ * roughjs, clsx, nanoid…). A browser cannot load that over HTTP, so the graph is
+ * resolved here, once, by `bun build`. The result — our board app plus Excalidraw
+ * plus React — becomes `static/app/`, a self-contained ESM tree with code-split
+ * chunks for locales and mermaid.
  *
- * Run from the plugin directory: `node scripts/vendor.mjs`. The produced files
- * are committed, so a normal install never needs a build step.
+ * Only the runtime-by-URL assets (fonts, embedded data) are copied next to it:
+ * Excalidraw resolves those against `window.EXCALIDRAW_ASSET_PATH`.
+ *
+ * Run from the plugin directory: `node scripts/vendor.mjs`. The output is
+ * committed, so installing the plugin never needs a build step. Requires the
+ * devDependencies (`bun install` at the workspace root) and `bun` on PATH.
  */
 
 import { cp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -41,11 +39,11 @@ function findPackage(name) {
 }
 const excalidrawRoot = findPackage('@excalidraw/excalidraw');
 if (excalidrawRoot === undefined) {
-	console.error('missing @excalidraw/excalidraw — run `npm install @excalidraw/excalidraw` (or `bun add`) at the workspace root first');
+	console.error('missing @excalidraw/excalidraw — install the devDependencies first (`bun install` at the workspace root)');
 	process.exit(1);
 }
 
-/** Locate the bundler: `bun` on PATH, the known asdf/bun install, or $BUN_BIN. */
+/** Locate the bundler. */
 function bunBin() {
 	const candidates = [
 		process.env.BUN_BIN,
@@ -58,14 +56,12 @@ function bunBin() {
 	}
 	throw new Error('bun not found — set BUN_BIN to a bun binary');
 }
-
-const bunEnv = { ...process.env, BUN_INSTALL: process.env.BUN_INSTALL ?? '/tmp/bun-install', BUN_CACHE_DIR: process.env.BUN_CACHE_DIR ?? '/tmp/bun-cache' };
-
-// --- 1. Excalidraw production tree ------------------------------------
-const assetRoot = path.join(excalidrawRoot, 'dist', 'prod');
-const assetsDir = path.join(root, 'static', 'assets');
-await rm(assetsDir, { recursive: true, force: true });
-await mkdir(assetsDir, { recursive: true });
+const bun = bunBin();
+const bunEnv = {
+	...process.env,
+	BUN_INSTALL: process.env.BUN_INSTALL ?? '/tmp/bun-install',
+	BUN_CACHE_DIR: process.env.BUN_CACHE_DIR ?? '/tmp/bun-cache'
+};
 
 async function readdirEntries(dir) {
 	const { readdir } = await import('node:fs/promises');
@@ -73,10 +69,18 @@ async function readdirEntries(dir) {
 	return names.map((name) => ({ name, full: path.join(dir, name) }));
 }
 
+// --- 1. Runtime-by-URL assets (fonts, embedded data) -------------------
+const assetRoot = path.join(excalidrawRoot, 'dist', 'prod');
+const assetsDir = path.join(root, 'static', 'assets');
+await rm(assetsDir, { recursive: true, force: true });
+await mkdir(assetsDir, { recursive: true });
 for (const entry of await readdirEntries(assetRoot)) {
+	if (entry.name !== 'fonts' && entry.name !== 'data') continue;
 	if (entry.name === 'fonts') {
 		await mkdir(path.join(assetsDir, 'fonts'), { recursive: true });
 		for (const font of await readdirEntries(entry.full)) {
+			// The CJK font set is ~13 MB of subsets; without it the browser falls
+			// back to system fonts for CJK text, and everything else still loads.
 			if (font.name === 'Xiaolai') continue;
 			await cp(font.full, path.join(assetsDir, 'fonts', font.name), { recursive: true });
 		}
@@ -85,103 +89,91 @@ for (const entry of await readdirEntries(assetRoot)) {
 	await cp(entry.full, path.join(assetsDir, entry.name), { recursive: true });
 }
 
-// --- 2. ESM vendor builds of React (for the import map) ----------------
-const vendorDir = path.join(root, 'static', 'vendor');
-await rm(vendorDir, { recursive: true, force: true });
-await mkdir(vendorDir, { recursive: true });
-
-const vendorEntries = {
-	'react.mjs': `export * from 'react';\nexport { default } from 'react';\n`,
-	'react-dom.mjs': `export * from 'react-dom';\nexport { default } from 'react-dom';\n`,
-	'react-dom-client.mjs': `export * from 'react-dom/client';\nexport { default } from 'react-dom/client';\n`,
-	'jsx-runtime.mjs': `export * from 'react/jsx-runtime';\nexport { default } from 'react/jsx-runtime';\n`,
-	'jsx-dev-runtime.mjs': `export * from 'react/jsx-dev-runtime';\nexport { default } from 'react/jsx-dev-runtime';\n`
-};
-const vendorSrcDir = path.join(root, 'static-src', 'vendor');
-await rm(vendorSrcDir, { recursive: true, force: true });
-await mkdir(vendorSrcDir, { recursive: true });
-for (const [name, source] of Object.entries(vendorEntries)) {
-	const src = path.join(vendorSrcDir, name.replace(/\.mjs$/, '.js'));
-	await writeFile(src, source);
-}
-const bun = bunBin();
-execFileSync(bun, [
-	'build',
-	...Object.keys(vendorEntries).map((name) => path.join(vendorSrcDir, name.replace(/\.mjs$/, '.js'))),
-	'--outdir', vendorDir,
-	'--minify',
-	'--target', 'browser',
-	'--format', 'esm'
-], { stdio: 'inherit', env: bunEnv });
-// bun names outputs after the entry files; adopt the .mjs names the page maps.
-for (const name of Object.keys(vendorEntries)) {
-	const built = path.join(vendorDir, name.replace(/\.mjs$/, '.js'));
-	if (existsSync(built)) await import('node:fs/promises').then((fs) => fs.rename(built, path.join(vendorDir, name)));
-}
-
-// --- 3. The board app --------------------------------------------------
-// React and Excalidraw stay external: the page's import map provides them, so
-// one React instance is shared by our app and by Excalidraw's own graph.
-const appOut = path.join(root, 'static', 'board-app.js');
+// --- 2. The board app: app + Excalidraw + React in one ESM tree --------
+const appDir = path.join(root, 'static', 'app');
+await rm(appDir, { recursive: true, force: true });
 execFileSync(bun, [
 	'build',
 	path.join(root, 'static-src', 'main.jsx'),
-	'--outfile', appOut,
+	'--outdir', appDir,
 	'--minify',
 	'--target', 'browser',
-	'--external=react',
-	'--external=react-dom',
-	'--external=react-dom/client',
-	'--external=react/jsx-runtime',
-	'--external=excalidraw-host'
+	'--splitting',
+	'--define', 'process.env.NODE_ENV="production"'
 ], { stdio: 'inherit', env: bunEnv });
 
-// --- 4. The iframe document -------------------------------------------
+// --- 2b. The stylesheet ------------------------------------------------
+// `@excalidraw/excalidraw`'s `./index.css` export is condition-gated, so the
+// production stylesheet is copied verbatim next to the bundle and linked from
+// the page. Without it the canvas has no definite size (see main.jsx).
+await cp(path.join(assetRoot, 'index.css'), path.join(appDir, 'excalidraw.css'));
+
+// --- 3. The iframe document -------------------------------------------
+// The inline handler is installed BEFORE the module graph: a module that fails
+// to load never runs its own error listener, and the tab would sit on
+// "Loading…" forever with no clue why (which is exactly what it used to do).
 const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Excalidraw</title>
-<link rel="stylesheet" href="/api/excalidraw/assets/index.css" />
+<link rel="stylesheet" href="/api/excalidraw/app/excalidraw.css" />
 <style>
-  html, body, #root { height: 100%; margin: 0; }
-  .ex-root { position: relative; height: 100%; }
-  .ex-status { position: absolute; top: 8px; left: 8px; z-index: 20; font: 12px/1.4 system-ui, sans-serif; color: #333; background: rgba(255,255,255,.9); padding: 3px 8px; border-radius: 8px; pointer-events: none; }
-  .ex-status-error { color: #b00020; }
+  html, body, #root { height: 100%; margin: 0; background: #fff; }
+  /* Excalidraw sizes itself to 100% of its parent: the wrapper must own the
+     viewport, or the canvas collapses to nothing. */
+  .ex-root { position: relative; width: 100%; height: 100%; }
+  #board-status { position: fixed; top: 8px; left: 8px; z-index: 30; max-width: calc(100% - 16px); font: 12px/1.4 system-ui, sans-serif; color: #333; background: rgba(255,255,255,.94); border: 1px solid rgba(0,0,0,.1); padding: 3px 8px; border-radius: 8px; pointer-events: none; }
+  #board-status.error { color: #b00020; border-color: rgba(176,0,32,.4); white-space: pre-wrap; }
 </style>
 </head>
 <body>
-<div id="root"><div class="ex-status">Loading…</div></div>
-<script type="importmap">
-{ "imports": {
-  "react": "/api/excalidraw/vendor/react.mjs",
-  "react-dom": "/api/excalidraw/vendor/react-dom.mjs",
-  "react-dom/client": "/api/excalidraw/vendor/react-dom-client.mjs",
-  "react/jsx-runtime": "/api/excalidraw/vendor/jsx-runtime.mjs",
-  "react/jsx-dev-runtime": "/api/excalidraw/vendor/jsx-dev-runtime.mjs",
-  "excalidraw-host": "/api/excalidraw/assets/index.js"
-} }
+<div id="board-status">Loading…</div>
+<div id="root"></div>
+<script>
+  // Read by Excalidraw for its font and embedded-data URLs.
+  window.EXCALIDRAW_ASSET_PATH = "/api/excalidraw/assets/";
+  (function () {
+    var status = document.getElementById("board-status");
+    var show = function (message) {
+      if (!status) return;
+      status.textContent = "board failed: " + message;
+      status.className = "error";
+    };
+    window.addEventListener("error", function (event) {
+      show((event && (event.message || event.error)) || "unknown error");
+    });
+    window.addEventListener("unhandledrejection", function (event) {
+      show((event && event.reason) || "unhandled rejection");
+    });
+    window.__boardStatus = function (text, isError) {
+      if (!status) return;
+      status.textContent = text;
+      status.className = isError ? "error" : "";
+    };
+  }());
 </script>
-<script type="module" src="/api/excalidraw/board-app.js"></script>
+<script type="module" src="/api/excalidraw/app/main.js" onerror="window.__boardStatus && window.__boardStatus('board failed: bundle did not load', true)"></script>
 </body>
 </html>
 `;
 await writeFile(path.join(root, 'static', 'board.html'), html);
 
-// Record what was vendored, so upgrades know what to re-run.
+// --- 4. Record what was vendored --------------------------------------
 const vendorNote = `# Vendored Excalidraw
 
-- Source: \`@excalidraw/excalidraw@${pkg.devDependencies?.['@excalidraw/excalidraw'] ?? 'unknown'}\`
-- License: MIT (Excalidraw), MIT (React — vendor builds only, runtime not bundled).
-- \`assets/\` is the package's \`dist/prod\` tree (the CJK font set is omitted).
-- \`vendor/\` are ESM builds of React/React-DOM compiled from the workspace
-  \`node_modules\` with \`bun build\`, used by the board page's import map.
-- \`board-app.js\` is built from \`../static-src/main.jsx\` with \`bun build\`.
+- Source: \`@excalidraw/excalidraw@${pkg.devDependencies?.['@excalidraw/excalidraw'] ?? 'unknown'}\` (MIT).
+- \`app/\` is the bundled board app: \`../static-src/main.jsx\` + Excalidraw + React,
+  built by \`bun build\` with code splitting (locale and mermaid chunks).
+  Excalidraw's published build imports npm packages by bare specifier, so it
+  cannot be served to a browser unbundled.
+- \`assets/\` holds only what Excalidraw fetches by URL at runtime: \`fonts/\` and
+  \`data/\`. The CJK font set (Xiaolai, ~13 MB) is omitted; CJK text falls back
+  to system fonts.
 - Re-generate everything with \`node scripts/vendor.mjs\` after upgrading the package.
 `;
 await writeFile(path.join(root, 'static', 'VENDOR.md'), vendorNote);
 
-console.log(`vendored Excalidraw -> ${assetsDir}`);
-console.log(`vendored React ESM  -> ${vendorDir}`);
-console.log(`built board app       -> ${appOut}`);
+console.log(`assets -> ${assetsDir}`);
+console.log(`board  -> ${appDir}`);

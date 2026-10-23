@@ -61,13 +61,40 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
+		 * Chats whose files tab was already paired with the board.
+		 *
+		 * Module-level, so a tab that remounts (switching chats, collapsing the
+		 * column, coming back) pairs once instead of reopening files every time —
+		 * a person who closed the files tab meant it.
+		 */
+		const paired = new Set();
+
+		/**
 		 * The board tab body: an iframe hosting the Excalidraw app for this chat.
 		 *
 		 * The iframe is the whole tab: the board app is a separate document that
 		 * talks to the Host directly (same origin), so this component has nothing to
 		 * know about Excalidraw itself.
+		 *
+		 * Opening the board also puts the files tab into the same pane, once per
+		 * chat. Both are page tabs in one strip, so the native chips switch between
+		 * "Files" and "Excalidraw" and either can be closed as usual, instead of the
+		 * board replacing the files view.
 		 */
-		function BoardBody({ sessionId, t }) {
+		function BoardBody({ sessionId, t, useTabInfo }) {
+			const tab = typeof useTabInfo === "function" ? useTabInfo().tab : undefined;
+			react.useEffect(() => {
+				const openTab = tab?.actions?.openTab;
+				if (typeof openTab !== "function" || typeof sessionId !== "string" || sessionId === "") return;
+				if (paired.has(sessionId)) return;
+				paired.add(sessionId);
+				try {
+					// Same pane as this tab: the strip then carries both chips.
+					openTab("files");
+				} catch {
+					// A deployment without the files tab: the board stands alone.
+				}
+			}, [sessionId, tab]);
 			if (typeof sessionId !== "string" || sessionId === "") {
 				return el("div", {
 					style: {

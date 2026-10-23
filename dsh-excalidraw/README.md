@@ -54,15 +54,24 @@ ln -sfn ~/deepseek-harness-plugins/dsh-excalidraw \
   временный файл + `rename`).
 - `lib/client.js` — клиентский плагин: тип вкладки через
   `ctx.sidebarRightTabs.register(...)` и тело/заголовок через слоты
-  `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title`.
-- `static/` — вендоренные ассеты (`assets/` = `dist/prod` из
-  `@excalidraw/excalidraw`, без CJK-шрифта ~13 МБ) и собранное приложение
-  (`board-app.js`, `board.html`). Всё закоммичено — обычная установка ничего
-  не собирает.
-- `static-src/main.jsx` — исходник приложения доски (React + Excalidraw).
-  Собирается командой `node scripts/vendor.mjs` (нужны `bun` и пакеты из
-  `devDependencies`); после апгрейда `@excalidraw/excalidraw` пересоберите
-  и перекоммитьте `static/`.
+  `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title`. При открытии
+  доска **добавляет вкладку файлов в ту же панель** (один раз на чат), так что
+  в полосе вкладок появляются оба чипа — «Files» и «Excalidraw» — и
+  переключение идёт штатно, без потери доступа к файлам.
+- `static/app/` — **приложение доски одним деревом**: `main.jsx` + Excalidraw +
+  React, собранные `bun build` (код-сплиттинг для локалей и mermaid) плюс
+  `excalidraw.css`. Публикуемая сборка `@excalidraw/excalidraw` не
+  самостоятельна — она импортирует десяток npm-пакетов голыми спецификаторами
+  (radix, jotai, roughjs, clsx…), поэтому в браузер её отдавать нельзя; граф
+  разрешается один раз, при вендоринге.
+- `static/assets/` — только то, что Excalidraw тянет по URL во время работы:
+  `fonts/` и `data/` (CJK-шрифт ~13 МБ исключён; CJK-текст рисуется системным).
+- `static/board.html` — документ iframe: подключает `app/excalidraw.css`,
+  `app/main.js`, ставит `EXCALIDRAW_ASSET_PATH` и вешает обработчик ошибок
+  **до** загрузки модулей, чтобы сбой показывался текстом, а не пустотой.
+- Всё закоммичено — обычная установка ничего не собирает. Пересборка:
+  `node scripts/vendor.mjs` (нужны `bun` и `devDependencies` из корня
+  репозитория) — после апгрейда `@excalidraw/excalidraw`.
 
 ## Безопасность
 
@@ -74,6 +83,11 @@ ln -sfn ~/deepseek-harness-plugins/dsh-excalidraw \
 ## Проверка
 
 ```sh
-node scripts/host-test.mjs    # API доски, статика, инструменты, контракты схем: 32
-node scripts/client-smoke.mjs # обвязка вкладки: 29
+node scripts/host-test.mjs    # API доски, статика, инструменты, контракты схем: 41
+node scripts/client-smoke.mjs # обвязка вкладки, пара «файлы + доска»: 34
+npm run test:board            # доска реально рисуется (headless Chrome, нужен живой dsh web)
 ```
+
+`test:board` стоит запускать после любой правки `static/`: именно он ловит
+«страница пустая» (однажды так и вышло — без стилей контейнер доски получал
+высоту 33 554 432 px и не рисовал ничего).

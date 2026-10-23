@@ -4,26 +4,42 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Excalidraw</title>
-<link rel="stylesheet" href="/api/excalidraw/assets/index.css" />
+<link rel="stylesheet" href="/api/excalidraw/app/excalidraw.css" />
 <style>
-  html, body, #root { height: 100%; margin: 0; }
-  .ex-root { position: relative; height: 100%; }
-  .ex-status { position: absolute; top: 8px; left: 8px; z-index: 20; font: 12px/1.4 system-ui, sans-serif; color: #333; background: rgba(255,255,255,.9); padding: 3px 8px; border-radius: 8px; pointer-events: none; }
-  .ex-status-error { color: #b00020; }
+  html, body, #root { height: 100%; margin: 0; background: #fff; }
+  /* Excalidraw sizes itself to 100% of its parent: the wrapper must own the
+     viewport, or the canvas collapses to nothing. */
+  .ex-root { position: relative; width: 100%; height: 100%; }
+  #board-status { position: fixed; top: 8px; left: 8px; z-index: 30; max-width: calc(100% - 16px); font: 12px/1.4 system-ui, sans-serif; color: #333; background: rgba(255,255,255,.94); border: 1px solid rgba(0,0,0,.1); padding: 3px 8px; border-radius: 8px; pointer-events: none; }
+  #board-status.error { color: #b00020; border-color: rgba(176,0,32,.4); white-space: pre-wrap; }
 </style>
 </head>
 <body>
-<div id="root"><div class="ex-status">Loading…</div></div>
-<script type="importmap">
-{ "imports": {
-  "react": "/api/excalidraw/vendor/react.mjs",
-  "react-dom": "/api/excalidraw/vendor/react-dom.mjs",
-  "react-dom/client": "/api/excalidraw/vendor/react-dom-client.mjs",
-  "react/jsx-runtime": "/api/excalidraw/vendor/jsx-runtime.mjs",
-  "react/jsx-dev-runtime": "/api/excalidraw/vendor/jsx-dev-runtime.mjs",
-  "excalidraw-host": "/api/excalidraw/assets/index.js"
-} }
+<div id="board-status">Loading…</div>
+<div id="root"></div>
+<script>
+  // Read by Excalidraw for its font and embedded-data URLs.
+  window.EXCALIDRAW_ASSET_PATH = "/api/excalidraw/assets/";
+  (function () {
+    var status = document.getElementById("board-status");
+    var show = function (message) {
+      if (!status) return;
+      status.textContent = "board failed: " + message;
+      status.className = "error";
+    };
+    window.addEventListener("error", function (event) {
+      show((event && (event.message || event.error)) || "unknown error");
+    });
+    window.addEventListener("unhandledrejection", function (event) {
+      show((event && event.reason) || "unhandled rejection");
+    });
+    window.__boardStatus = function (text, isError) {
+      if (!status) return;
+      status.textContent = text;
+      status.className = isError ? "error" : "";
+    };
+  }());
 </script>
-<script type="module" src="/api/excalidraw/board-app.js"></script>
+<script type="module" src="/api/excalidraw/app/main.js" onerror="window.__boardStatus && window.__boardStatus('board failed: bundle did not load', true)"></script>
 </body>
 </html>
