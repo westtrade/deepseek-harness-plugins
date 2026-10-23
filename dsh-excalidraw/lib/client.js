@@ -14,8 +14,11 @@ window.__ModuleLoader__.load({
 		const TAB_KIND = "excalidraw";
 		/** The board app, served by the Host half. */
 		const BOARD_URL = "/api/excalidraw/board.html";
-		/** Browser services: the slot registry, copy, and the right-sidebar tabs. */
-		const inject = ["slots", "locale", "sidebarRightTabs"];
+		/**
+		 * Browser services: the slot registry, copy, the right-sidebar tab registry,
+		 * and the sidebar controller (read for its live layout while pairing tabs).
+		 */
+		const inject = ["slots", "locale", "sidebarRightTabs", "sidebarRight"];
 
 		const en = {
 			"tab.title": "Board",

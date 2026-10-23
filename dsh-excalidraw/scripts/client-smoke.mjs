@@ -115,7 +115,7 @@ exportsObject.apply(host.ctx);
 
 // --- inject list ---
 const inject = exportsObject.inject;
-for (const service of ['slots', 'locale', 'sidebarRightTabs']) {
+for (const service of ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight']) {
 	ok(`injects ${service}`, inject.includes(service), inject.join(','));
 }
 ok('inject list has no duplicates', new Set(inject).size === inject.length);
