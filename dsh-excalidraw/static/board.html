@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Excalidraw</title>
+<link rel="stylesheet" href="/api/excalidraw/assets/index.css" />
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  .ex-root { position: relative; height: 100%; }
+  .ex-status { position: absolute; top: 8px; right: 8px; z-index: 2; font: 12px/1.4 system-ui, sans-serif; color: #666; background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 8px; pointer-events: none; }
+  .ex-status-loading, .ex-status-no-session { left: 8px; right: auto; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="importmap">
+{ "imports": { "excalidraw-host": "/api/excalidraw/assets/index.js" } }
+</script>
+<script type="module" src="/api/excalidraw/board-app.js"></script>
+</body>
+</html>

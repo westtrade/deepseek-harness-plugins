@@ -1,0 +1,36 @@
+{
+  "name": "dsh-excalidraw",
+  "version": "0.1.0",
+  "description": "A per-chat Excalidraw board for DeepSeek Harness: a right-sidebar tab with a shared canvas, plus agent tools to read it and draw on it",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "static",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test:host": "node scripts/host-test.mjs",
+    "test:client": "node scripts/client-smoke.mjs",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "devDependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "license": "MIT"
+}
