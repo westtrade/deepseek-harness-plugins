@@ -1,1 +1,0 @@
-import{Hr,Jt}from"./main-jyk3wrje.js";var o=import.meta.url?new URL(import.meta.url):void 0;typeof window>"u"&&typeof self<"u"&&(self.onmessage=async(a)=>{switch(a.data.command){case Hr.Subset:let t=await Jt(a.data.arrayBuffer,a.data.codePoints);self.postMessage(t,{transfer:[t]});break}});export{o as WorkerUrl};

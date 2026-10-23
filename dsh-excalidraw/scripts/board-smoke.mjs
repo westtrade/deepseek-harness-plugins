@@ -160,6 +160,27 @@ try {
 	ok('the canvas is sized to the page', bitmap !== null && bitmap.size !== undefined, String(canvas));
 	ok('the scene is actually painted', bitmap !== null && bitmap.ink > 2000, String(canvas));
 	ok('the drawn shape carries its color', bitmap !== null && bitmap.colored > 1000, String(canvas));
+
+	// The board is shared with the agent: a write from outside the tab must
+	// appear without the person reopening anything.
+	const added = await fetch(`${baseUrl}/api/excalidraw/boards/${encodeURIComponent(SESSION)}`, {
+		method: 'PUT',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({
+			elements: [
+				...scene.elements,
+				{ type: 'rectangle', x: 400, y: 80, width: 200, height: 140, backgroundColor: '#a5d8ff' }
+			],
+			appState: {}
+		})
+	});
+	ok('a second write is accepted', added.ok, String(added.status));
+	await new Promise((resolve) => setTimeout(resolve, 4500));
+	const liveScene = await evaluate('JSON.stringify((window.__boardApi?.getSceneElements()||[]).map((element) => element.type))');
+	ok('an agent write reaches the open board by itself', String(liveScene).includes('rectangle') && String(liveScene).includes('ellipse'), String(liveScene));
+	// And the tab must not save its own stale copy back over it.
+	const stored = await (await fetch(`${baseUrl}/api/excalidraw/boards/${encodeURIComponent(SESSION)}`)).json();
+	ok('the tab does not clobber the newer scene', Array.isArray(stored?.board?.elements) && stored.board.elements.some((element) => element.type === 'rectangle'), JSON.stringify(stored?.board?.elements?.map((element) => element.type)));
 	socket.close();
 } finally {
 	chrome.kill('SIGKILL');

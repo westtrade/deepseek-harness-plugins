@@ -7,37 +7,64 @@
  * (radix, jotai, roughjs, clsx…), so it cannot be served to a browser as-is —
  * the bundler resolves that graph once, at vendor time.
  *
- * The app is dumb: it loads this chat's scene from the Host, renders the
- * canvas, and persists on change. All Excalidraw knowledge lives inside this
- * file — the Host only moves opaque JSON.
+ * The board is shared with the agent, so this app has two jobs:
+ * - persist the person's own strokes (and only those: `onChange` also fires for
+ *   cursor and scroll, and re-saving those would overwrite an agent's drawing);
+ * - pull in whatever the agent wrote while the tab stayed open.
  */
 
 import { createRoot } from 'react-dom/client';
 import { useEffect, useRef, useState } from 'react';
-// The stylesheet is linked by board.html, not imported here: the package's
-// `./index.css` export is condition-gated (production/development only), so the
-// vendor step copies the production stylesheet next to the bundle instead.
-//
-// It is not optional. Without it the Excalidraw container has no definite
-// height, its ResizeObserver feeds back the growing canvas, and the board ends
-// up as a 33-million-pixel tall blank page — which is exactly how it looked.
 import { Excalidraw, convertToExcalidrawElements, restore } from '@excalidraw/excalidraw';
 
 const sessionId = new URLSearchParams(location.search).get('session') ?? '';
 const boardUrl = `/api/excalidraw/boards/${encodeURIComponent(sessionId)}`;
 const SAVE_DELAY_MS = 800;
+const POLL_MS = 1500;
+
+/**
+ * Write the tab's status line.
+ *
+ * The page installs `window.__boardStatus` before this bundle loads, so a
+ * failure here still shows up as text instead of an empty rectangle.
+ *
+ * @param text - what to say.
+ * @param isError - whether to style it as a failure.
+ */
+function setStatusLine(text, isError) {
+	if (typeof window.__boardStatus === 'function') window.__boardStatus(text, isError === true);
+}
+
+/**
+ * Identity of a scene's *content*.
+ *
+ * Excalidraw bumps `version` when an element is really edited, and leaves it
+ * alone for a moved cursor or a scroll. Comparing this string is what separates
+ * "the person drew something" from "the app noticed the pointer" — without it
+ * every pointer move re-uploads the scene and silently reverts the agent's work.
+ *
+ * @param elements - the live or stored scene.
+ * @returns a string that changes only when the drawing changes.
+ */
+function sceneVersion(elements) {
+	let out = '';
+	for (const element of elements) {
+		out += `${element.id}:${typeof element.version === 'number' ? element.version : 0}:${element.isDeleted === true ? 1 : 0}|`;
+	}
+	return out;
+}
 
 /**
  * Turn whatever the board holds into a scene Excalidraw can draw.
  *
- * The agent writes plain JSON, and Excalidraw silently drops an element that is
- * missing its bookkeeping fields (seed, version, versionNonce, updated) — a text
- * element written as `{ type: "text", x, y, text }` simply never appeared. So
- * skeletons are converted with Excalidraw's own converter, and the result goes
- * through `restore`, which fills defaults, repairs bindings and drops nonsense.
+ * The agent writes plain JSON, and Excalidraw silently drops an element missing
+ * its bookkeeping fields (seed, version, versionNonce, updated) — a text element
+ * written as `{ type: "text", x, y, text }` simply never appeared. Skeletons are
+ * therefore converted with Excalidraw's own converter and the result is repaired
+ * by `restore`, which fills defaults and drops nonsense.
  *
  * @param elements - stored elements, full or skeletal.
- * @returns the normalized elements, or an empty scene when nothing survives.
+ * @returns the normalized elements.
  */
 function normalizeElements(elements) {
 	if (!Array.isArray(elements) || elements.length === 0) return [];
@@ -71,8 +98,7 @@ function normalizeElements(elements) {
  * `appState` as a whole must never be handed back to Excalidraw: the live object
  * carries Maps and callbacks (`collaborators`, `selectedElementIds`…), and a
  * JSON round-trip turns them into plain objects, which crashes the renderer with
- * "e.appState.collaborators.forEach is not a function". Only primitives that
- * describe the framing survive here.
+ * "e.appState.collaborators.forEach is not a function".
  *
  * @param appState - a stored or live appState, possibly partial or stale.
  * @returns the safe subset, with undefined entries dropped.
@@ -89,28 +115,19 @@ function pickView(appState) {
 	return view;
 }
 
-/**
- * Write the tab's status line.
- *
- * The page installs `window.__boardStatus` before this bundle loads, so a
- * failure here still shows up as text instead of an empty rectangle.
- *
- * @param text - what to say.
- * @param isError - whether to style it as a failure.
- */
-function setStatusLine(text, isError) {
-	if (typeof window.__boardStatus === 'function') window.__boardStatus(text, isError === true);
-}
-
 function App() {
 	const [scene, setScene] = useState(null); // null = loading
 	const saveTimer = useRef(null);
-	const sceneRef = useRef(null);
+	const apiRef = useRef(null);
+	/** Content version this tab has already stored (or pulled) — see sceneVersion. */
+	const savedVersion = useRef(null);
+	/** `updatedAt` of the stored scene this tab already shows. */
+	const shownAt = useRef(0);
 
 	useEffect(() => {
 		if (sessionId === '') {
 			setStatusLine('no session — open this board from a chat', true);
-			return;
+			return undefined;
 		}
 		fetch(boardUrl, { cache: 'no-store' })
 			.then((response) => {
@@ -121,16 +138,14 @@ function App() {
 				const board = payload?.board ?? {};
 				const raw = Array.isArray(board.elements) ? board.elements : [];
 				const elements = normalizeElements(raw);
-				sceneRef.current = {
-					elements,
-					appState: pickView(board.appState)
-				};
-				setScene(sceneRef.current);
+				savedVersion.current = sceneVersion(elements);
+				shownAt.current = typeof board.updatedAt === 'number' ? board.updatedAt : 0;
+				setScene({ elements, appState: pickView(board.appState) });
 				setStatusLine('ready');
 				// Repair what the agent wrote: store the canonical form, so the next
 				// read (by the person, the model or another tab) sees real elements.
 				if (elements.length !== raw.length || JSON.stringify(elements) !== JSON.stringify(raw)) {
-					void persist(elements, sceneRef.current.appState);
+					void persist(elements, pickView(board.appState));
 				}
 			})
 			.catch((error) => {
@@ -144,6 +159,7 @@ function App() {
 	/** Write the scene to the Host. */
 	const persist = (elements, appState) => {
 		setStatusLine('saving…');
+		savedVersion.current = sceneVersion(elements);
 		return fetch(boardUrl, {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json' },
@@ -154,16 +170,61 @@ function App() {
 				if (!response.ok) throw new Error(`HTTP ${response.status}`);
 				return response.json();
 			})
-			.then(() => setStatusLine('saved'))
+			.then((payload) => {
+				// Our own write: never treat it as a remote change and reload it.
+				if (typeof payload?.board?.updatedAt === 'number') shownAt.current = payload.board.updatedAt;
+				setStatusLine('saved');
+			})
 			.catch((error) => setStatusLine(`board failed: could not save — ${String(error?.message ?? error)}`, true));
 	};
 
 	const scheduleSave = (elements, appState) => {
+		const version = sceneVersion(elements);
+		if (version === savedVersion.current) return;
+		savedVersion.current = version;
 		if (saveTimer.current !== null) clearTimeout(saveTimer.current);
 		saveTimer.current = setTimeout(() => {
+			saveTimer.current = null;
 			void persist(elements, appState);
 		}, SAVE_DELAY_MS);
 	};
+
+	/**
+	 * Follow the board the way a shared document works.
+	 *
+	 * The agent writes to the same scene through the Host, so a tab left open
+	 * would otherwise show a stale picture until it was reopened. This polls the
+	 * stored scene and pulls it in when it is newer than what this tab shows, but
+	 * never while a local edit is still waiting to be saved — the person's own
+	 * strokes always win the race against a refresh.
+	 */
+	useEffect(() => {
+		if (sessionId === '') return undefined;
+		const timer = setInterval(() => {
+			if (saveTimer.current !== null) return;
+			const api = apiRef.current;
+			if (api === null || api === undefined) return;
+			fetch(boardUrl, { cache: 'no-store' })
+				.then((response) => (response.ok ? response.json() : undefined))
+				.then((payload) => {
+					const board = payload?.board;
+					if (board === undefined) return;
+					const updatedAt = typeof board.updatedAt === 'number' ? board.updatedAt : 0;
+					if (updatedAt <= shownAt.current) return;
+					const elements = normalizeElements(board.elements);
+					shownAt.current = updatedAt;
+					// Adopt the pulled version first: `updateScene` fires onChange, and
+					// saving it straight back would flip the board back and forth.
+					savedVersion.current = sceneVersion(elements);
+					api.updateScene({ elements });
+					setStatusLine('updated by the board');
+				})
+				.catch(() => {
+					/* a transient read failure is not worth a warning */
+				});
+		}, POLL_MS);
+		return () => clearInterval(timer);
+	}, []);
 
 	if (sessionId === '' || scene === null) return <div className="ex-root" />;
 	return (
@@ -171,8 +232,8 @@ function App() {
 			<Excalidraw
 				initialData={scene}
 				excalidrawAPI={(api) => {
-					// Handy for diagnostics (and for a future embed hook): the live
-					// scene and export helpers without poking at React internals.
+					apiRef.current = api;
+					// Handy for diagnostics: the live scene without React internals.
 					window.__boardApi = api;
 				}}
 				onChange={(elements, appState) => scheduleSave(elements, appState)}

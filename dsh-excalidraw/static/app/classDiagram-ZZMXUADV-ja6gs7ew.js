@@ -1,1 +1,0 @@
-import{A}from"./main-hnttsvkj.js";import"./main-44c20p5a.js";import{It,ht,Qt,pt}from"./main-60cdndd9.js";import"./main-hyaxyq84.js";import"./main-wh14ntbt.js";import"./main-ekps2mk0.js";var c={parser:It,get db(){return new ht},renderer:pt,styles:Qt,init:A((r)=>{if(!r.class)r.class={};r.class.arrowMarkerAbsolute=r.arrowMarkerAbsolute},"init")};export{c as diagram};
