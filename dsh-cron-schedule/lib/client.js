@@ -123,6 +123,112 @@ window.__ModuleLoader__.load({
 			"preset.monday9": "Mondays at 09:00",
 			"preset.monthly1": "1st of the month at 09:00"
 		};
+		/**
+		* Russian dictionary.
+		*
+		* Russian is a language PACK here, not a built-in: the shell ships only `zh`
+		* and `en`. `apply` registers it with `ctx.locale.addLanguage`, and its
+		* declared fallback to `en` keeps every other plugin working — a namespace
+		* without `ru` entries falls through to English instead of raw keys.
+		*/
+		const ru = {
+			"panel.title": "Расписания ИИ",
+			"panel.subtitle": "В назначенное время в выбранной папке стартует новый чат и получает задачу",
+			"panel.loading": "Загрузка…",
+			"panel.error": "Сервис расписаний недоступен: {message}",
+			"panel.empty": "Расписаний пока нет. Добавьте ниже.",
+			"panel.refresh": "Обновить",
+			"settings.allowedModels": "Модели, на которых ИИ может запускать задачи",
+			"settings.allowedModelsHint": "Пусто — без ограничений: ИИ может выбрать любую маршрутизируемую модель. Добавьте записи, чтобы ограничить этим списком и выпадайку панели, и cron_create у ИИ. Менять его может только человек.",
+			"settings.allowedModelsEmpty": "Без ограничений — разрешены все маршрутизируемые модели.",
+			"settings.addModel": "Добавить модель",
+			"settings.addModelPlaceholder": "— выберите модель, которую разрешить —",
+			"settings.remove": "Убрать",
+			"settings.save": "Сохранить",
+			"settings.saving": "Сохранение…",
+			"settings.discard": "Отменить",
+			"settings.unsaved": "Не сохранено",
+			"settings.saveFailed": "Не удалось сохранить список.",
+			"settings.dropped": "Удалено, развёртывание больше не предоставляет: {list}",
+			"settings.expand": "Развернуть",
+			"settings.collapse": "Свернуть",
+			"settings.allowedModelsLegend": "Разрешённые модели",
+			"form.name": "Название",
+			"form.namePlaceholder": "Утренний отчёт",
+			"form.preset": "Когда",
+			"form.expression": "Cron-выражение",
+			"form.timeZone": "Часовой пояс",
+			"form.workspace": "Рабочая папка",
+			"form.workspacePlaceholder": "/home/you/project или выберите ниже",
+			"form.browse": "Выбрать папку…",
+			"form.pickExisting": "Существующий workspace",
+			"form.pickExistingPlaceholder": "— выберите сохранённый workspace —",
+			"form.initialPrompt": "Бриф: инструктаж (отправится один раз)",
+			"form.initialPromptPlaceholder": "Кто этот бот, где доска, постоянные правила…",
+			"form.initialPromptHint": "Отправляется один раз, в чат, который создаёт расписание, — перед первой задачей. При включённом «Всегда новый чат» уходит каждый запуск: там каждый чат новый.",
+			"form.prompt": "Задача на каждый запуск",
+			"form.promptPlaceholder": "Что бот должен сделать на этот раз?",
+			"form.promptHint": "Что бот читает при каждом запуске. Пишите коротко: постоянные указания — в брифе.",
+			"form.add": "Добавить расписание",
+			"form.adding": "Добавление…",
+			"form.save": "Сохранить изменения",
+			"form.saving": "Сохранение…",
+			"form.cancel": "Отмена",
+			"form.preview": "Следующие запуски: {list}",
+			"form.invalid": "Проверьте форму: {message}",
+			"form.chat": "Чат",
+			"form.chatNew": "Первый запуск создаст чат, следующие продолжат его",
+			"form.chatPick": "Использовать существующий чат",
+			"form.chatPickPlaceholder": "— выберите чат —",
+			"form.chatLoading": "Загрузка чатов…",
+			"form.chatBound": "Привязанный чат: {id}",
+			"form.chatIgnored": "Не используется, пока включён «Всегда новый чат»",
+			"form.alwaysNewChat": "Всегда новый чат",
+			"form.alwaysNewChatHint": "Вкл.: каждый запуск стартует новый чат. Выкл.: первый запуск создаёт чат, а каждый следующий продолжает его, поэтому повторяющаяся задача накапливает одну переписку.",
+			"column.chat": "Чат",
+			"column.chatNew": "новый каждый раз",
+			"column.chatUnbound": "ещё не создан",
+			"form.model": "Модель",
+			"form.modelDefault": "По умолчанию",
+			"column.modelInherited": "последняя использованная",
+			"form.modelRestricted": "Можно выбрать только модели, разрешённые в настройках",
+			"form.autoCatchUp": "Догонять пропущенные запуски после перезапуска",
+			"form.autoCatchUpHint": "Вкл.: пропущенные, пока DSH был выключен, запуски стартуют сами при следующем запуске. Выкл.: ждут нажатия «Запустить». Менять это может только человек.",
+			"column.model": "Модель",
+			"column.auto": "Догон",
+			"column.autoOn": "авто",
+			"column.autoAsk": "спросит",
+			"column.name": "Название",
+			"column.when": "Когда",
+			"column.next": "Следующий запуск",
+			"column.workspace": "Папка",
+			"column.actions": "Действия",
+			"job.never": "никогда",
+			"job.run": "Запустить",
+			"job.running": "Запуск…",
+			"job.edit": "Изменить",
+			"job.editing": "Редактирование…",
+			"job.updated": "Сохранено «{name}»",
+			"job.delete": "Удалить",
+			"job.enable": "Включить",
+			"job.disable": "Выключить",
+			"job.off": "выкл",
+			"job.last": "Последний: {status} {time}",
+			"job.lastFailed": "Последний запуск не удался: {message}",
+			"job.open": "Открыть чат",
+			"job.openFailed": "Чата ещё нет в списке — откройте его в сайдбаре.",
+			"missed.title": "Пропущено запусков, пока DSH был выключен: {count}",
+			"missed.hint": "Время прошло, но чат не был запущен. Запустите их или скройте.",
+			"missed.run": "Запустить",
+			"missed.dismiss": "Скрыть",
+			"preset.custom": "Своё выражение",
+			"preset.hourly": "Каждый час",
+			"preset.every30": "Каждые 30 минут",
+			"preset.daily9": "Каждый день в 09:00",
+			"preset.weekdays9": "По будням в 09:00",
+			"preset.monday9": "По понедельникам в 09:00",
+			"preset.monthly1": "1-го числа в 09:00"
+		};
 		const zh = {
 			"panel.title": "AI 定时任务",
 			"panel.subtitle": "到点后在指定目录新建会话并把任务发给 AI",
@@ -1409,7 +1515,24 @@ window.__ModuleLoader__.load({
 		*/
 		function apply(ctx) {
 			const t = ctx.locale.bind(NS);
-			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "cron-schedule: dictionaries");
+			/**
+			 * Add Russian as a language pack.
+			 *
+			 * The shell ships only `zh` and `en`, so `locale.preference: ru` would
+			 * silently fall back to English until some plugin registers it. Another
+			 * plugin may have done that already (`addLanguage` throws on a duplicate
+			 * id, and one plugin failing must not take the browser half down), so the
+			 * failure is contained. The declared fallback to `en` keeps every other
+			 * namespace working: untranslated keys read in English, not as raw ids.
+			 */
+			ctx.effect(() => {
+				try {
+					return ctx.locale.addLanguage({ id: "ru", label: "Русский", fallback: "en" });
+				} catch {
+					return () => {};
+				}
+			}, "cron-schedule: russian language pack");
+			ctx.effect(() => ctx.locale.register(NS, { zh, en, ru }), "cron-schedule: dictionaries");
 			// The same id links the sidebar row to the main panel: the sidebar passes
 			// this id to layout.selectPanel().
 			ctx.effect(() => ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({

@@ -50,8 +50,13 @@ function fakeContext() {
 	const dictionaries = [];
 	const effects = [];
 	const pickCalls = [];
+	const languages = [];
 	const ctx = {
 		locale: {
+			addLanguage: (language) => {
+				languages.push(language);
+				return () => {};
+			},
 			bind: () => (key, values) => {
 				if (values !== undefined && typeof values === 'object') return `${key} ${JSON.stringify(values)}`;
 				return key;
@@ -82,7 +87,7 @@ function fakeContext() {
 			return factory();
 		}
 	};
-	return { ctx, registrations, dictionaries, effects, pickCalls };
+	return { ctx, registrations, dictionaries, effects, pickCalls, languages };
 }
 
 const source = await readFile(bundlePath, 'utf8');
@@ -185,9 +190,21 @@ const dictionary = host.dictionaries.find((entry) => entry.ns === 'cronSchedule'
 ok('dictionaries registered under the namespace', dictionary !== undefined);
 ok('english dictionary present', dictionary?.dicts.en !== undefined);
 ok('chinese dictionary present', dictionary?.dicts.zh !== undefined);
+ok('russian dictionary present', dictionary?.dicts.ru !== undefined);
 const enKeys = Object.keys(dictionary?.dicts.en ?? {});
 const zhKeys = Object.keys(dictionary?.dicts.zh ?? {});
-ok('both dictionaries have the same keys', enKeys.length === zhKeys.length && enKeys.every((key) => zhKeys.includes(key)), `${enKeys.length} vs ${zhKeys.length}`);
+const ruKeys = Object.keys(dictionary?.dicts.ru ?? {});
+ok('all dictionaries have the same keys', zhKeys.length === enKeys.length && ruKeys.length === enKeys.length
+	&& enKeys.every((key) => zhKeys.includes(key) && ruKeys.includes(key)), `${enKeys.length} en / ${zhKeys.length} zh / ${ruKeys.length} ru`);
+// Every dictionary must keep the placeholders the panel interpolates.
+const placeholders = (value) => [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort().join(',');
+const ruPlaceholderMismatch = enKeys.filter((key) => placeholders(dictionary.dicts.en[key]) !== placeholders(dictionary?.dicts.ru[key] ?? ''));
+ok('russian keeps every placeholder', ruPlaceholderMismatch.length === 0, ruPlaceholderMismatch.join(', '));
+ok('russian is really translated', ruKeys.filter((key) => dictionary.dicts.ru[key] !== dictionary.dicts.en[key]).length === enKeys.length, 'untranslated keys present');
+// Russian is a language pack, not a built-in: the shell ships only zh and en.
+const russianLanguage = host.languages.find((language) => language.id === 'ru');
+ok('russian is registered as a language pack', russianLanguage !== undefined, JSON.stringify(host.languages));
+ok('russian language pack is labelled and falls back to english', russianLanguage?.label === 'Русский' && russianLanguage?.fallback === 'en', JSON.stringify(russianLanguage));
 for (const required of [
 	'panel.title', 'panel.subtitle', 'panel.empty', 'panel.error',
 	'form.name', 'form.preset', 'form.expression', 'form.timeZone',
@@ -206,7 +223,7 @@ for (const required of [
 	'job.run', 'job.edit', 'job.editing', 'job.updated', 'job.delete', 'job.enable', 'job.disable', 'job.openFailed',
 	'missed.title', 'missed.hint', 'missed.run', 'missed.dismiss'
 ]) {
-	ok(`copy has ${required}`, enKeys.includes(required) && zhKeys.includes(required));
+	ok(`copy has ${required}`, enKeys.includes(required) && zhKeys.includes(required) && ruKeys.includes(required));
 }
 // Every preset id the form renders must have copy in both languages.
 for (const preset of ['custom', 'hourly', 'every30', 'daily9', 'weekdays9', 'monday9', 'monthly1']) {
@@ -319,11 +336,28 @@ ok('one component serves add and edit', source.includes('function JobForm(') && 
 ok('editor preselects a matching preset', source.includes('entry.expression === job.expression'));
 ok('a deleted job closes its editor', source.includes('editing === undefined) setEditingId(null)'));
 
+// --- a duplicate language pack must not break the browser half ---
+// `dsh-goal-vector` also ships Russian; whichever plugin loads second hits a
+// duplicate-id error from `addLanguage`, and that must stay contained.
+const duplicate = fakeContext();
+duplicate.ctx.locale.addLanguage = () => {
+	throw new Error('locale "ru" is already registered');
+};
+let duplicateError;
+try {
+	exportsObject.apply(duplicate.ctx);
+} catch (error) {
+	duplicateError = error;
+}
+ok('a duplicate russian pack does not break apply', duplicateError === undefined, String(duplicateError?.message ?? ''));
+ok('the dictionaries still register after a duplicate pack', duplicate.dictionaries.some((entry) => entry.ns === 'cronSchedule' && entry.dicts.ru !== undefined));
+ok('the panel still registers after a duplicate pack', duplicate.registrations.length === 3, String(duplicate.registrations.length));
+
 console.log('client wiring OK');
 console.log(`  module id : ${captured.id}`);
 console.log(`  inject    : ${inject.join(', ')}`);
 console.log(`  effects   : ${host.effects.join(' | ')}`);
 console.log(`  registered: ${host.registrations.map((entry) => `${entry.options.name} → ${entry.options.id ?? entry.options.key}`).join(' | ')}`);
-console.log(`  copy keys : ${enKeys.length} en / ${zhKeys.length} zh`);
+console.log(`  copy keys : ${enKeys.length} en / ${zhKeys.length} zh / ${ruKeys.length} ru`);
 console.log(`\nclient: pass=${pass} fail=${fail}`);
 process.exit(fail === 0 ? 0 : 1);
