@@ -39,6 +39,7 @@ const reactStub = {
 
 /** Fake client context recording every registration. */
 function fakeContext() {
+	const disposers = [];
 	const registrations = [];
 	const dictionaries = [];
 	const effects = [];
@@ -69,10 +70,12 @@ function fakeContext() {
 		},
 		effect: (factory, label) => {
 			effects.push(label);
-			return factory();
+			const disposer = factory();
+			if (typeof disposer === 'function') disposers.push(disposer);
+			return disposer;
 		}
 	};
-	return { ctx, registrations, dictionaries, effects, tabTypes };
+	return { ctx, registrations, dictionaries, effects, tabTypes, disposers };
 }
 
 const source = await readFile(bundlePath, 'utf8');
@@ -129,8 +132,9 @@ const tabType = host.tabTypes.find((entry) => entry.id === 'excalidraw');
 ok('the tab type is registered', tabType !== undefined);
 ok('the tab type is an extension', tabType.priority === 'extension');
 ok('the tab type has a title thunk', typeof tabType.title === 'function');
-ok('the tab type offers a guide entry', Array.isArray(tabType.guide) && tabType.guide.length === 1);
-ok('the guide entry has a glyph', typeof tabType.guide[0].icon === 'function');
+// No guide entry: with two guide entries the sidebar seeds its compass page
+// instead of opening on the files tab, which is the behaviour being fixed.
+ok('the tab type contributes no guide entry', Array.isArray(tabType.guide) && tabType.guide.length === 0, JSON.stringify(tabType.guide));
 
 // --- dictionaries ---
 const dictionary = host.dictionaries.find((entry) => entry.ns === 'excalidraw');
@@ -139,35 +143,56 @@ const enKeys = Object.keys(dictionary?.dicts.en ?? {});
 const zhKeys = Object.keys(dictionary?.dicts.zh ?? {});
 const ruKeys = Object.keys(dictionary?.dicts.ru ?? {});
 ok('all three dictionaries carry the same keys', enKeys.length === zhKeys.length && enKeys.length === ruKeys.length && enKeys.every((key) => zhKeys.includes(key) && ruKeys.includes(key)), `${enKeys.length}/${zhKeys.length}/${ruKeys.length}`);
-for (const required of ['tab.title', 'tab.guide', 'tab.guideDescription', 'tab.loading', 'tab.noSession']) {
+for (const required of ['tab.title', 'tab.noSession']) {
 	ok(`copy has ${required}`, enKeys.includes(required));
 }
+ok('the chip reads as a board, not the library name', dictionary.dicts.ru['tab.title'] === 'Доска' && dictionary.dicts.en['tab.title'] === 'Board', JSON.stringify([dictionary.dicts.ru['tab.title'], dictionary.dicts.en['tab.title']]));
 
 // --- the body renders an iframe for the right session ---
 const t = (key) => key;
-// The seat always injects this hook; here it stands in for the tab's actions.
-const openedTabs = [];
-const useTabInfo = () => ({ tab: { id: 'tab-1', sessionId: 'session-123', actions: { openTab: (kind) => openedTabs.push(kind) } } });
-const noSession = body.component({ sessionId: undefined, t, useTabInfo });
+const noSession = body.component({ sessionId: undefined, t });
 ok('without a session the body explains', Array.isArray(noSession.children) && noSession.children.includes('tab.noSession'), JSON.stringify(noSession).slice(0, 160));
-const withSession = body.component({ sessionId: 'session-123', t, useTabInfo });
+const withSession = body.component({ sessionId: 'session-123', t });
 ok('with a session the body renders a sized wrapper', withSession.type === 'div' && withSession.props.style?.minHeight === '360px');
 const frame = withSession.children?.[0];
 ok('the wrapper contains the iframe', frame?.type === 'iframe');
 ok('the iframe points at the board app for this chat', typeof frame.props.src === 'string' && frame.props.src === '/api/excalidraw/board.html?session=session-123', frame.props.src);
 ok('the iframe fills the wrapper', frame.props.style?.width === '100%' && frame.props.style?.height === '100%' && frame.props.style?.position === 'absolute');
 ok('the title renders the copy', title.component({ t }).children.includes('tab.title'));
-// Opening the board pairs it with the files tab in the same pane, once.
-ok('the board opens the files tab beside it', openedTabs.length === 1 && openedTabs[0] === 'files', JSON.stringify(openedTabs));
-body.component({ sessionId: 'session-123', t, useTabInfo });
-ok('the pairing happens once per chat', openedTabs.length === 1, JSON.stringify(openedTabs));
-const otherChat = () => ({ tab: { id: 'tab-2', sessionId: 'session-999', actions: { openTab: (kind) => openedTabs.push(kind) } } });
-body.component({ sessionId: 'session-999', t, useTabInfo: otherChat });
-ok('another chat pairs itself too', openedTabs.length === 2 && openedTabs[1] === 'files', JSON.stringify(openedTabs));
-// A deployment without the files tab must not break the board.
-const bare = () => ({ tab: { id: 'tab-3', actions: { openTab: () => { throw new Error('no such kind'); } } } });
-body.component({ sessionId: 'session-bare', t, useTabInfo: bare });
-ok('a failing pairing is swallowed', true);
+
+// --- the panel watcher that keeps files + board side by side ---------------
+ok('the watcher is registered as an effect', host.effects.includes('excalidraw: tab pairing'), host.effects.join(' | '));
+const opened = [];
+const surfaces = { 'session-123': { layout: { expanded: true, tabs: { 'tab-1': { kind: 'files' } } } } };
+host.ctx.sidebarRight = {
+	binding: { sessionId: 'session-123', surfaces },
+	openTab: (kind) => opened.push(kind)
+};
+// Run the poll once by hand: the effect registered a real interval.
+await new Promise((resolve) => setTimeout(resolve, 500));
+ok('an open panel pairs the board beside files', opened.join(',') === 'files,excalidraw,files', opened.join(','));
+ok('files is focused last, so the strip opens on it', opened[opened.length - 1] === 'files', opened.join(','));
+
+// A collapsed panel must not be opened behind the person's back.
+opened.length = 0;
+surfaces['session-123'].layout.expanded = false;
+await new Promise((resolve) => setTimeout(resolve, 500));
+ok('a collapsed panel is left alone', opened.length === 0, opened.join(','));
+
+// Re-opening pairs again (the edge), and an already paired panel is untouched.
+opened.length = 0;
+surfaces['session-123'].layout.expanded = true;
+surfaces['session-123'].layout.tabs = { 'tab-1': { kind: 'files' }, 'tab-2': { kind: 'excalidraw' } };
+await new Promise((resolve) => setTimeout(resolve, 500));
+ok('a paired panel is not touched again', opened.length === 0, opened.join(','));
 
 console.log(`client: pass=${pass} fail=${fail}`);
-if (fail > 0) process.exit(1);
+// The plugin arms a polling interval; dispose the effects so the process ends.
+for (const dispose of host.disposers) {
+	try {
+		dispose();
+	} catch {
+		/* nothing to release */
+	}
+}
+process.exit(fail > 0 ? 1 : 0);

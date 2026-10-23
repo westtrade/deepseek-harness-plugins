@@ -18,24 +18,15 @@ window.__ModuleLoader__.load({
 		const inject = ["slots", "locale", "sidebarRightTabs"];
 
 		const en = {
-			"tab.title": "Excalidraw",
-			"tab.guide": "Shared whiteboard for this chat",
-			"tab.guideDescription": "Draw together with the bot: the board lives in the right sidebar, and the AI can read it and draw on it too.",
-			"tab.loading": "Board is loading…",
+			"tab.title": "Board",
 			"tab.noSession": "Open a board from a chat."
 		};
 		const zh = {
-			"tab.title": "Excalidraw",
-			"tab.guide": "本会话共享白板",
-			"tab.guideDescription": "与机器人一起画：白板位于右侧边栏，AI 也可以读取和绘制。",
-			"tab.loading": "白板加载中…",
+			"tab.title": "白板",
 			"tab.noSession": "请从会话中打开白板。"
 		};
 		const ru = {
-			"tab.title": "Excalidraw",
-			"tab.guide": "Общая доска для этого чата",
-			"tab.guideDescription": "Рисуйте вместе с ботом: доска живёт в правой боковой панели, и ИИ тоже может её читать и рисовать на ней.",
-			"tab.loading": "Доска загружается…",
+			"tab.title": "Доска",
 			"tab.noSession": "Откройте доску из чата."
 		};
 
@@ -44,31 +35,6 @@ window.__ModuleLoader__.load({
 			return react.createElement(tag, props, ...children);
 		}
 
-		/** The tab glyph: a small canvas/pen mark, drawn inline. */
-		function BoardGlyph({ size }) {
-			const dimension = typeof size === "number" ? size : 16;
-			return el("svg", {
-				width: dimension,
-				height: dimension,
-				viewBox: "0 0 16 16",
-				fill: "none",
-				"aria-hidden": "true",
-				style: { display: "block" }
-			},
-				el("rect", { x: "1.5", y: "2", width: "13", height: "11", rx: "2", stroke: "currentColor", strokeWidth: "1.4" }),
-				el("path", { d: "M4.5 12.5L7 10l3 2.5", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round" }),
-				el("path", { d: "M10 5l1.6-1.6a1 1 0 0 1 1.4 1.4L7.4 10.4 5.5 11l.6-1.9L9.5 5.6", fill: "currentColor", opacity: ".7" }));
-		}
-
-		/**
-		 * Chats whose files tab was already paired with the board.
-		 *
-		 * Module-level, so a tab that remounts (switching chats, collapsing the
-		 * column, coming back) pairs once instead of reopening files every time —
-		 * a person who closed the files tab meant it.
-		 */
-		const paired = new Set();
-
 		/**
 		 * The board tab body: an iframe hosting the Excalidraw app for this chat.
 		 *
@@ -76,25 +42,10 @@ window.__ModuleLoader__.load({
 		 * talks to the Host directly (same origin), so this component has nothing to
 		 * know about Excalidraw itself.
 		 *
-		 * Opening the board also puts the files tab into the same pane, once per
-		 * chat. Both are page tabs in one strip, so the native chips switch between
-		 * "Files" and "Excalidraw" and either can be closed as usual, instead of the
-		 * board replacing the files view.
+		 * The pairing with the files tab is the watcher's job (see
+		 * {@link keepBoardBesideFiles}), so the body only renders the board.
 		 */
-		function BoardBody({ sessionId, t, useTabInfo }) {
-			const tab = typeof useTabInfo === "function" ? useTabInfo().tab : undefined;
-			react.useEffect(() => {
-				const openTab = tab?.actions?.openTab;
-				if (typeof openTab !== "function" || typeof sessionId !== "string" || sessionId === "") return;
-				if (paired.has(sessionId)) return;
-				paired.add(sessionId);
-				try {
-					// Same pane as this tab: the strip then carries both chips.
-					openTab("files");
-				} catch {
-					// A deployment without the files tab: the board stands alone.
-				}
-			}, [sessionId, tab]);
+		function BoardBody({ sessionId, t }) {
 			if (typeof sessionId !== "string" || sessionId === "") {
 				return el("div", {
 					style: {
@@ -126,7 +77,82 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * Client plugin body: register the tab type, its body, and its chip title.
+		 * Whether the panel is showing this chat with less than the pair of tabs.
+		 *
+		 * The sidebar seeds exactly ONE page when an empty column expands, and it
+		 * seeds the compass page as soon as two tab types are registered. This
+		 * plugin therefore contributes no guide entry — files stays the seed — and
+		 * this predicate decides when the board still has to join it.
+		 *
+		 * @param surface - the session's sidebar surface, or undefined.
+		 * @param kinds - the tab kinds to keep side by side.
+		 * @returns true when the column is open and a tab of the pair is missing.
+		 */
+		function needsPairing(surface, kinds) {
+			if (surface === undefined || surface === null) return false;
+			if (surface.layout?.expanded !== true) return false;
+			const present = Object.values(surface.layout.tabs ?? {}).map((tab) => tab.kind);
+			return kinds.some((kind) => !present.includes(kind));
+		}
+
+		/**
+		 * Open the files tab and the board beside it, files first and in focus.
+		 *
+		 * Each `openTab` is a store intent: the first opens (or focuses) files, the
+		 * second inserts the board after it, and the third brings files back to the
+		 * front — tabs keep insertion order, so the strip reads
+		 * “[Files] [Доска]” with Files active, which is the shape the panel had
+		 * before this plugin existed plus one tab.
+		 *
+		 * @param ctx - client root context carrying the sidebar controller.
+		 * @param kinds - the kinds to place, in strip order.
+		 */
+		function pairTabs(ctx, kinds) {
+			for (const kind of kinds) {
+				try {
+					ctx.sidebarRight.openTab(kind);
+				} catch {
+					// A deployment without that tab type, or a seat mid-navigation.
+				}
+			}
+			try {
+				ctx.sidebarRight.openTab(kinds[0]);
+			} catch {
+				/* files is optional too */
+			}
+		}
+
+		/**
+		 * Watch the right panel and pair the tabs when it opens.
+		 *
+		 * The client services expose no “panel expanded” event — the sidebar owns
+		 * its layout store privately — so this reads the controller's live binding,
+		 * which the seat refreshes on every commit. The poll only looks at two
+		 * fields, and acts on the collapsed → expanded edge, so closing the board
+		 * tab while the panel stays open is respected instead of undone.
+		 *
+		 * @param ctx - client root context carrying the sidebar controller.
+		 */
+		function keepBoardBesideFiles(ctx) {
+			const kinds = ["files", TAB_KIND];
+			const wasOpen = new Map();
+			const timer = setInterval(() => {
+				const binding = ctx.sidebarRight?.binding;
+				if (binding === undefined || binding === null) return;
+				const surface = binding.surfaces?.[binding.sessionId];
+				const open = surface?.layout?.expanded === true;
+				const was = wasOpen.get(binding.sessionId) === true;
+				wasOpen.set(binding.sessionId, open);
+				if (!open || was) return;
+				if (!needsPairing(surface, kinds)) return;
+				pairTabs(ctx, kinds);
+			}, 300);
+			ctx.effect(() => () => clearInterval(timer), "excalidraw: tab pairing");
+		}
+
+		/**
+		 * Client plugin body: register the tab type, its body and chip title, and
+		 * keep it beside the files tab.
 		 * @param ctx - client root context carrying the tab registry and the slots.
 		 */
 		function apply(ctx) {
@@ -137,13 +163,9 @@ window.__ModuleLoader__.load({
 				kind: TAB_KIND,
 				priority: "extension",
 				title: () => t("tab.title"),
-				guide: [{
-					// Right after the files tab in the “add tab” compass.
-					order: 15,
-					title: () => t("tab.guide"),
-					description: () => t("tab.guideDescription"),
-					icon: BoardGlyph
-				}]
+				// No guide entry on purpose: with two entries the sidebar would seed
+				// its compass page instead of opening on the files tab.
+				guide: []
 			}), "excalidraw: tab type");
 			ctx.effect(() => ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register({
 				name: "sidebar.right.pane.tab",
@@ -156,6 +178,7 @@ window.__ModuleLoader__.load({
 				key: TAB_ID,
 				locale: NS
 			}, BoardTitle)), "excalidraw: tab title");
+			keepBoardBesideFiles(ctx);
 		}
 		//#endregion
 		exports.apply = apply;
