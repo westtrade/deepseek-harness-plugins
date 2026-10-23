@@ -70,6 +70,16 @@ try {
 	ok('createdAt uses the clock seam', base.createdAt === NOW);
 	ok('timeZone defaults to UTC when omitted', normalizeJob({ name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p' }, undefined, NOW).timeZone === 'UTC');
 
+	// --- the optional setup brief ---
+	const withBrief = normalizeJob({ name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'task', initialPrompt: '  Ты — ревьюер  ' }, undefined, NOW);
+	ok('the setup brief is trimmed', withBrief.initialPrompt === 'Ты — ревьюер', withBrief.initialPrompt);
+	ok('a job without a brief stores no key', normalizeJob({ name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p' }, undefined, NOW).initialPrompt === undefined);
+	ok('a blank brief means none', normalizeJob({ name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p', initialPrompt: '   ' }, undefined, NOW).initialPrompt === undefined);
+	ok('an update keeps the brief when the field is absent', normalizeJob({ name: 'renamed' }, withBrief, NOW).initialPrompt === 'Ты — ревьюер');
+	ok('a null clears the brief', normalizeJob({ initialPrompt: null }, withBrief, NOW).initialPrompt === undefined);
+	ok('an update can replace the brief', normalizeJob({ initialPrompt: 'новый' }, withBrief, NOW).initialPrompt === 'новый');
+
+
 	// --- rejections ---
 	const rejects = (label, input) => {
 		let error;
@@ -88,6 +98,10 @@ try {
 	rejects('a too-long prompt', { name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'x'.repeat(9000) });
 	const fieldError = rejects('a bad expression', { name: 'a', expression: 'nope', workspacePath: '/tmp', prompt: 'p' });
 	ok('the rejection names the field', fieldError?.field === 'expression', fieldError?.field);
+	const briefError = rejects('an oversized brief', { name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p', initialPrompt: 'x'.repeat(8001) });
+	ok('the oversized brief names its field', briefError?.field === 'initialPrompt', briefError?.field);
+	const briefNotString = rejects('a non-string brief', { name: 'a', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p', initialPrompt: 42 });
+	ok('a non-string brief names its field', briefNotString?.field === 'initialPrompt', briefNotString?.field);
 
 	// --- update keeps identity and merges omitted fields ---
 	const updated = normalizeJob({ name: 'Renamed' }, base, NOW + 1000);

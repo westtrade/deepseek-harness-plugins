@@ -68,6 +68,26 @@ function requireText(value, field, maxLength) {
 }
 
 /**
+ * Validate an optional free-text field.
+ *
+ * An absent, `null` or blank value means "not set" — that is how the panel
+ * clears an optional field without a separate delete verb.
+ *
+ * @param value - raw text, or undefined/null.
+ * @param field - field name used in the error message.
+ * @param maxLength - longest accepted text.
+ * @returns the trimmed text, or undefined when there is none.
+ */
+function optionalText(value, field, maxLength) {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== 'string') throw new JobInputError(`${field} must be a string`, field);
+	const trimmed = value.trim();
+	if (trimmed === '') return undefined;
+	if (trimmed.length > maxLength) throw new JobInputError(`${field} is longer than ${maxLength} characters`, field);
+	return trimmed;
+}
+
+/**
  * Validate one chat reference.
  *
  * @param value - a session id, or `null`/absent for "no chat bound yet".
@@ -174,6 +194,15 @@ export function normalizeJob(input, base, now, allowed, available) {
 		: requireText(source.timeZone ?? 'UTC', 'timeZone', 64);
 	const workspacePath = path.resolve(requireText(source.workspacePath ?? base?.workspacePath, 'workspacePath', 4096));
 	const prompt = requireText(source.prompt ?? base?.prompt, 'prompt', MAX_PROMPT_CHARS);
+	/**
+	 * The setup message, delivered once into the chat this job creates.
+	 *
+	 * A recurring task usually needs a standing brief (who the bot is, where the
+	 * board is, how to work) that must not be repeated on every run. That brief
+	 * lives here and `prompt` stays the short task; absent means "send the task
+	 * alone", which is what every job written before this field did.
+	 */
+	const initialPrompt = optionalText(source.initialPrompt === undefined ? base?.initialPrompt : source.initialPrompt, 'initialPrompt', MAX_PROMPT_CHARS);
 	if (!isValidTimeZone(timeZone)) throw new JobInputError(`unknown time zone "${timeZone}"`, 'timeZone');
 	try {
 		parseCron(expression);
@@ -224,6 +253,7 @@ export function normalizeJob(input, base, now, allowed, available) {
 		timeZone,
 		workspacePath,
 		prompt,
+		...(initialPrompt === undefined ? {} : { initialPrompt }),
 		alwaysNewChat,
 		...(sessionId === undefined ? {} : { sessionId }),
 		enabled,
@@ -278,6 +308,7 @@ export function jobView(job, locale = 'ru', now = Date.now()) {
 		timeZone: job.timeZone,
 		workspacePath: job.workspacePath,
 		prompt: job.prompt,
+		initialPrompt: job.initialPrompt ?? null,
 		enabled: job.enabled,
 		autoCatchUp: job.autoCatchUp === true,
 		alwaysNewChat: job.alwaysNewChat === true,
@@ -322,6 +353,7 @@ function reviveJob(raw) {
 		timeZone,
 		workspacePath: raw.workspacePath,
 		prompt: raw.prompt,
+		...(typeof raw.initialPrompt === 'string' && raw.initialPrompt !== '' ? { initialPrompt: raw.initialPrompt } : {}),
 		enabled: raw.enabled !== false,
 		autoCatchUp: raw.autoCatchUp === true,
 		alwaysNewChat: raw.alwaysNewChat === true,

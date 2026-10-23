@@ -681,6 +681,57 @@ try {
 	ok('the run answer repeats the chat and the outcome', run.body.sessionId === agent.options.sessionId && run.body.lastStatus === 'succeeded', JSON.stringify({ sessionId: run.body.sessionId, lastStatus: run.body.lastStatus }));
 	ok('run advanced nextRunAt into the future', afterRun.body.job.nextRunAt > Date.now());
 
+	// --- the setup brief: read once into the new chat, then only the task ---
+	const briefJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'С брифом', expression: '0 10 * * *', workspacePath: path.join(dir, 'proj'),
+		prompt: 'проверь доску', initialPrompt: 'Ты — ревьюер. Доска: .vscode/TODO.md'
+	});
+	ok('create stores the setup brief', briefJob.status === 201 && briefJob.body.job.initialPrompt === 'Ты — ревьюер. Доска: .vscode/TODO.md', JSON.stringify(briefJob.body?.job?.initialPrompt));
+	const chatsBeforeBrief = host.created.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefJob.body.job.id)}/run`);
+	const briefAgent = host.created.at(-1);
+	ok('a job with a brief still starts one chat', host.created.length === chatsBeforeBrief + 1, `created=${host.created.length}`);
+	ok('the new chat reads the brief first, then the task', briefAgent.agent.messages.length === 2
+		&& briefAgent.agent.messages[0].content[0].text === 'Ты — ревьюер. Доска: .vscode/TODO.md'
+		&& briefAgent.agent.messages[1].content[0].text === 'проверь доску',
+		JSON.stringify(briefAgent.agent.messages.map((entry) => entry.content[0].text)));
+	ok('both messages are cron messages, the brief marked as init', briefAgent.agent.messages.every((entry) => entry.source.kind === 'cron')
+		&& briefAgent.agent.messages[0].source.stage === 'init'
+		&& briefAgent.agent.messages[1].source.stage === 'task',
+		JSON.stringify(briefAgent.agent.messages.map((entry) => entry.source.stage)));
+	// The next run continues that chat: the brief is already in the transcript,
+	// so only the task is delivered — which is the point of the separate field.
+	const briefPromptsBefore = host.prompts.length;
+	const briefChatsBefore = host.created.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefJob.body.job.id)}/run`);
+	ok('the second run reuses the chat and sends the task alone', host.created.length === briefChatsBefore
+		&& host.prompts.length === briefPromptsBefore + 1
+		&& host.prompts.at(-1).sessionId === briefAgent.options.sessionId,
+		JSON.stringify({ created: host.created.length, prompts: host.prompts.length, session: host.prompts.at(-1)?.sessionId }));
+	// "Always new chat" makes every chat new, so every run has to carry the brief.
+	const briefAlways = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Бриф каждый раз', expression: '0 11 * * *', workspacePath: path.join(dir, 'proj'),
+		prompt: 'короткая задача', initialPrompt: 'длинный бриф', alwaysNewChat: true
+	});
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefAlways.body.job.id)}/run`);
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefAlways.body.job.id)}/run`);
+	const alwaysRuns = host.created.slice(-2);
+	ok('every always-new-chat run carries the brief', alwaysRuns.every((entry) => entry.agent.messages.length === 2
+		&& entry.agent.messages[0].content[0].text === 'длинный бриф'
+		&& entry.agent.messages[1].content[0].text === 'короткая задача'),
+		JSON.stringify(alwaysRuns.map((entry) => entry.agent.messages.map((message) => message.content[0].text))));
+	// The field is optional, and an edited form can clear it.
+	const noBrief = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Без брифа', expression: '0 12 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p'
+	});
+	ok('a job without a brief stores none', noBrief.status === 201 && noBrief.body.job.initialPrompt === null, JSON.stringify(noBrief.body.job.initialPrompt));
+	const clearedBrief = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefJob.body.job.id)}`, { initialPrompt: null });
+	ok('a null brief clears the stored one', clearedBrief.status === 200 && clearedBrief.body.job.initialPrompt === null, JSON.stringify(clearedBrief.body?.job?.initialPrompt));
+	const tooLongBrief = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'x', expression: '* * * * *', workspacePath: '/tmp', prompt: 'p', initialPrompt: 'x'.repeat(8001)
+	});
+	ok('an oversized brief is refused on its own field', tooLongBrief.status === 400 && tooLongBrief.body.field === 'initialPrompt', `${tooLongBrief.status} ${JSON.stringify(tooLongBrief.body)}`);
+
 	// --- an explicit chat, and the "always new chat" switch ---
 	const boundJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
 		name: 'В указанный чат', expression: '0 9 * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',

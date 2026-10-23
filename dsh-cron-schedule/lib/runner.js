@@ -20,26 +20,34 @@ import { randomUUID } from 'node:crypto';
 export const SCHEDULED_SESSION_PREFIX = 'session-cron';
 
 /**
- * Build the user message a scheduled run starts with.
+ * Build one user message for a scheduled run.
  *
  * The harness freezes messages created through `createUserMessage` from
  * `@deepseek-ai/dsh-llm`; this is the same plain shape (a fresh uuid id, the
  * `user` role, text content, and a provenance source) so the log carries the
  * job's identity without importing that package.
  *
+ * A job has up to two messages: the `init` brief that sets a new chat up, and
+ * the `task` it repeats. They are separate turns on purpose — the chat then
+ * reads [brief, task, task, …] instead of carrying the whole brief again on
+ * every run.
+ *
  * @param job - the stored job record.
+ * @param text - the message body (defaults to the job's task prompt).
+ * @param stage - `init` for the setup message, `task` for the recurring one.
  * @returns a frozen user message.
  */
-function scheduledMessage(job) {
+function scheduledMessage(job, text = job.prompt, stage = 'task') {
 	return Object.freeze({
 		id: randomUUID(),
 		role: 'user',
-		content: Object.freeze([Object.freeze({ type: 'text', text: job.prompt })]),
+		content: Object.freeze([Object.freeze({ type: 'text', text })]),
 		source: Object.freeze({
 			kind: 'cron',
 			jobId: job.id,
 			jobName: job.name,
-			expression: job.expression
+			expression: job.expression,
+			stage
 		})
 	});
 }
@@ -196,6 +204,13 @@ export async function runJob(runtime, job, options = {}) {
 			runtime.sessionTitle?.rename(handle.agent.session, job.name);
 		} catch (error) {
 			runtime.logger?.warn?.(`cron-schedule: could not title session "${sessionId}": ${String(error)}`);
+		}
+		// A new chat is the only place the brief has to be read: it is delivered
+		// first, then the task, so later runs on the same chat repeat only the
+		// task. `alwaysNewChat` jobs make every run "new", so they get both each
+		// time — a fresh chat starts without the brief, by definition.
+		if (typeof job.initialPrompt === 'string' && job.initialPrompt !== '') {
+			handle.agent.followup(scheduledMessage(job, job.initialPrompt, 'init'));
 		}
 		handle.agent.followup(scheduledMessage(job));
 	} catch (error) {

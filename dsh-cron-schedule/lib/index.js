@@ -445,6 +445,7 @@ export async function apply(ctx, config = {}) {
 			timeZone: base.timeZone,
 			workspacePath: base.workspacePath,
 			prompt: base.prompt,
+			...(base.initialPrompt === null || base.initialPrompt === undefined ? {} : { initialPrompt: base.initialPrompt }),
 			enabled: base.enabled,
 			alwaysNewChat: base.alwaysNewChat === true,
 			overdue: base.overdue,
@@ -851,14 +852,15 @@ export async function apply(ctx, config = {}) {
 				expression: 'string, 5-field cron, e.g. "*/30 * * * *" — must fire at least once',
 				timeZone: 'IANA zone, e.g. "Europe/Moscow" (default "UTC")',
 				workspacePath: 'absolute directory the chat runs in (created when missing)',
-				prompt: `string, 1–${MAX_PROMPT_CHARS} chars — first user message of each chat`,
+				prompt: `string, 1–${MAX_PROMPT_CHARS} chars — the task delivered on every run`,
+				initialPrompt: `string, 0–${MAX_PROMPT_CHARS} chars, optional — our setup brief, delivered once into the chat the job creates (before the first task); absent means the task alone`,
 				enabled: 'boolean (default true) — whether the schedule fires',
 				model: '{ provider, model } | null — must be an entry of cron_models / the allow-list; null means the deployment default',
 				alwaysNewChat: 'boolean (default false) — every run starts a fresh chat; otherwise the first run creates one and later runs continue it',
 				sessionId: 'string | null — bind an existing chat (from cron_chats); ignored while alwaysNewChat is on',
 				autoCatchUp: 'boolean — HUMAN ONLY: replay runs missed while DSH was down (the AI tools drop this field)'
 			},
-			fields: ['id', 'name', 'expression', 'description', 'timeZone', 'workspacePath', 'prompt', 'enabled', 'alwaysNewChat', 'overdue', 'missed', 'sessionId', 'nextRunAt', 'lastStatus', 'lastSessionId', 'lastError'],
+			fields: ['id', 'name', 'expression', 'description', 'timeZone', 'workspacePath', 'prompt', 'initialPrompt', 'enabled', 'alwaysNewChat', 'overdue', 'missed', 'sessionId', 'nextRunAt', 'lastStatus', 'lastSessionId', 'lastError'],
 			lastStatus: ['started', 'succeeded', 'failed'],
 			endpoints: [
 				{ method: 'GET', path: MANIFEST_PATH, humanOnly: false, purpose: 'this description' },
@@ -967,6 +969,7 @@ function registerTools(ctx, deps) {
 				timeZone: { type: 'string' },
 				workspacePath: { type: 'string' },
 				prompt: { type: 'string' },
+				initialPrompt: { type: 'string' },
 				enabled: { type: 'boolean' },
 				alwaysNewChat: { type: 'boolean' },
 				overdue: { type: 'boolean' },
@@ -1014,7 +1017,8 @@ function registerTools(ctx, deps) {
 				name: { type: 'string', required: true, description: 'Short human label for the schedule.' },
 				expression: { type: 'string', required: true, description: 'Standard 5-field cron expression in the job time zone, e.g. "0 9 * * 1-5" for 09:00 on weekdays.' },
 				workspacePath: { type: 'string', required: true, description: 'Absolute directory the new chat runs in. It is created when missing.' },
-				prompt: { type: 'string', required: true, description: 'The task text delivered to the AI as the first message of each new chat.' },
+				prompt: { type: 'string', required: true, description: 'The task text delivered to the AI on every run.' },
+				initialPrompt: { type: 'string', description: 'Optional setup brief (who the bot is, standing rules, paths). Delivered ONCE into the chat the job creates, before the first task — use it so the task text does not have to repeat the whole brief every run.' },
 				timeZone: { type: 'string', description: 'IANA time zone for the expression, e.g. "Europe/Moscow". Defaults to UTC.' },
 				enabled: { type: 'boolean', description: 'Whether the schedule is active. Defaults to true.' },
 				model: {
@@ -1039,12 +1043,13 @@ function registerTools(ctx, deps) {
 						workspacePath: { type: 'string' },
 						nextRunAt: { type: 'number' },
 						alwaysNewChat: { type: 'boolean' },
+						initialPrompt: { type: 'string' },
 						sessionId: { type: 'string' },
 						provider: { type: 'string' },
 						model: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}, next run ${value.nextRunAt === undefined ? 'never' : new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
+				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}${value.initialPrompt === undefined ? '' : ' with a setup brief sent once into its new chat'}, next run ${value.nextRunAt === undefined ? 'never' : new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
 			},
 			async execute(args, exec) {
 				const source = { ...args };
@@ -1072,6 +1077,7 @@ function registerTools(ctx, deps) {
 					expression: fresh.expression,
 					workspacePath: fresh.workspacePath,
 					alwaysNewChat: fresh.alwaysNewChat === true,
+					...(fresh.initialPrompt === undefined ? {} : { initialPrompt: fresh.initialPrompt }),
 					...(fresh.nextRunAt === undefined ? {} : { nextRunAt: fresh.nextRunAt }),
 					...(fresh.sessionId === undefined ? {} : { sessionId: fresh.sessionId }),
 					...(fresh.model === undefined ? {} : { provider: fresh.model.provider, model: fresh.model.model })

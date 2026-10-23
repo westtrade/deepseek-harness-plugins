@@ -192,6 +192,7 @@ for (const required of [
 	'panel.title', 'panel.subtitle', 'panel.empty', 'panel.error',
 	'form.name', 'form.preset', 'form.expression', 'form.timeZone',
 	'form.workspace', 'form.browse', 'form.pickExisting', 'form.prompt', 'form.add',
+	'form.initialPrompt', 'form.initialPromptHint', 'form.promptHint',
 	'form.save', 'form.saving', 'form.cancel',
 	'form.autoCatchUp', 'form.autoCatchUpHint', 'column.auto', 'column.autoOn', 'column.autoAsk',
 	'form.model', 'form.modelDefault', 'form.modelRestricted', 'column.model',
@@ -240,6 +241,11 @@ ok('panel sends the flag to the host', source.includes('autoCatchUp: draft.autoC
 ok('table shows the catch-up state', source.includes('column.autoOn') && source.includes('column.autoAsk'));
 
 // --- model picker and the allowed-model list ---
+// --- the setup brief is a field of its own, next to the recurring task ---
+ok('the form offers a setup brief', source.includes('t("form.initialPrompt")') && source.includes('onChange: (event) => set({ initialPrompt: event.target.value })'));
+ok('the brief is prefilled from the job', source.includes('initialPrompt: job.initialPrompt ?? ""'));
+ok('the brief is sent with the job', source.includes('initialPrompt: draft.initialPrompt.trim() === "" ? null : draft.initialPrompt'));
+ok('the task field is named as the every-run text', source.includes('"form.prompt": "Task on every run"'));
 ok('form has a model dropdown', source.includes('t("form.model")') && source.includes('models: modelChoices'));
 ok('dropdown offers the deployment default', source.includes('t("form.modelDefault")'));
 ok('dropdown lists catalog entries', source.includes('`${entry.name} — ${entry.provider}/${entry.model}`'));

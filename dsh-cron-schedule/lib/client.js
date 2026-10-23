@@ -57,8 +57,12 @@ window.__ModuleLoader__.load({
 			"form.browse": "Choose folder…",
 			"form.pickExisting": "Existing workspace",
 			"form.pickExistingPlaceholder": "— pick a saved workspace —",
-			"form.prompt": "Task for the AI",
-			"form.promptPlaceholder": "What should the new chat do?",
+			"form.initialPrompt": "Setup brief (sent once)",
+			"form.initialPromptPlaceholder": "Who this bot is, where the board is, the standing rules…",
+			"form.initialPromptHint": "Delivered once, into the chat this schedule creates, before the first task. With \"always start a new chat\" it is sent on every run instead — every chat is new then.",
+			"form.prompt": "Task on every run",
+			"form.promptPlaceholder": "What should the bot do this time?",
+			"form.promptHint": "What the bot reads on each run. Keep it short: standing instructions belong in the setup brief.",
 			"form.add": "Add schedule",
 			"form.adding": "Adding…",
 			"form.save": "Save changes",
@@ -151,8 +155,12 @@ window.__ModuleLoader__.load({
 			"form.browse": "选择目录…",
 			"form.pickExisting": "已有工作区",
 			"form.pickExistingPlaceholder": "— 选择已保存的工作区 —",
-			"form.prompt": "交给 AI 的任务",
-			"form.promptPlaceholder": "新会话需要做什么？",
+			"form.initialPrompt": "初始化提示（仅发送一次）",
+			"form.initialPromptPlaceholder": "这个机器人是谁、看板在哪、长期规则……",
+			"form.initialPromptHint": "在创建会话时发送一次（位于第一个任务之前）。勾选“每次新建会话”后则每次运行都发送，因为每次都是新会话。",
+			"form.prompt": "每次运行的任务",
+			"form.promptPlaceholder": "这次要机器人做什么？",
+			"form.promptHint": "机器人每次运行都会读到。请写短一些：长期要求放到初始化提示里。",
 			"form.add": "添加任务",
 			"form.adding": "添加中…",
 			"form.save": "保存修改",
@@ -611,6 +619,7 @@ window.__ModuleLoader__.load({
 					timeZone: job.timeZone,
 					workspacePath: job.workspacePath,
 					prompt: job.prompt,
+					initialPrompt: job.initialPrompt ?? "",
 					autoCatchUp: job.autoCatchUp === true,
 					alwaysNewChat: job.alwaysNewChat === true,
 					sessionId: job.sessionId ?? "",
@@ -623,6 +632,7 @@ window.__ModuleLoader__.load({
 					timeZone: localZone(),
 					workspacePath: "",
 					prompt: "",
+					initialPrompt: "",
 					// Off by default: a new schedule asks before replaying downtime.
 					autoCatchUp: false,
 					// Off by default: a repeating schedule reuses the chat it creates.
@@ -725,6 +735,9 @@ window.__ModuleLoader__.load({
 						timeZone: draft.timeZone.trim() === "" ? "UTC" : draft.timeZone.trim(),
 						workspacePath: draft.workspacePath.trim(),
 						prompt: draft.prompt,
+						// `null` clears the brief: an emptied field means "just send the
+						// task", not "keep the old text".
+						initialPrompt: draft.initialPrompt.trim() === "" ? null : draft.initialPrompt,
 						// Sent only from here: the Host refuses this flag from any
 						// caller that is not an authenticated browser session, so the
 						// panel is the one place it can be turned on.
@@ -855,13 +868,26 @@ window.__ModuleLoader__.load({
 								onChange: (event) => set({ workspacePath: event.target.value })
 							}),
 							button(t("form.browse"), browse, { compact: true }))))),
-				label(t("form.prompt"), el("textarea", {
-					value: draft.prompt,
-					placeholder: t("form.promptPlaceholder"),
-					rows: 3,
-					style: { ...inputStyle, resize: "vertical", fontFamily: "inherit" },
-					onChange: (event) => set({ prompt: event.target.value })
-				})),
+				label(t("form.initialPrompt"), el("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+					el("textarea", {
+						value: draft.initialPrompt,
+						placeholder: t("form.initialPromptPlaceholder"),
+						rows: 6,
+						style: { ...inputStyle, resize: "vertical", fontFamily: "inherit" },
+						onChange: (event) => set({ initialPrompt: event.target.value })
+					}),
+					el("span", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } },
+						t("form.initialPromptHint")))),
+				label(t("form.prompt"), el("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+					el("textarea", {
+						value: draft.prompt,
+						placeholder: t("form.promptPlaceholder"),
+						rows: 3,
+						style: { ...inputStyle, resize: "vertical", fontFamily: "inherit" },
+						onChange: (event) => set({ prompt: event.target.value })
+					}),
+					el("span", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } },
+						t("form.promptHint")))),
 				// Chat policy: reuse one chat across runs, or start fresh each time.
 				el("div", { style: { display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" } },
 					// The label carries the spinner: switching folders refetches this
