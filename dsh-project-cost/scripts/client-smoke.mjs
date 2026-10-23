@@ -93,7 +93,8 @@ mod.apply(ctx);
 // --- assertions ------------------------------------------------------------
 const expected = [
 	['sidebar.panellist', 'project-cost'],
-	['main', 'project-cost']
+	['main', 'project-cost'],
+	['conversation.input.dock', 'project-cost-context']
 ];
 if (registrations.some((entry) => entry.slot === 'sidebar.footer.action')) {
 	throw new Error('the sidebar footer link must stay removed — its total moved into the panel icon row');
@@ -115,6 +116,18 @@ if (!mod.inject.includes('slots') || !mod.inject.includes('locale')) {
 }
 if (!effects.includes('project-cost: tree badges') || !effects.includes('project-cost: chat badges')) {
 	throw new Error(`badge decorators must start: got [${effects.join(', ')}]`);
+}
+if (!effects.includes('project-cost: context cost dock')) {
+	throw new Error(`the context cost dock must register: got [${effects.join(', ')}]`);
+}
+// The dock lives in the chat's bottom panel, so it must read the same context
+// projection the shipped meter does, and price at the prompt rate.
+const source = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
+for (const needle of ['useProjection("contextPressure")', 'useProjection("modelSelection")', 'tokens * price.prompt']) {
+	if (!source.includes(needle)) throw new Error(`context cost dock must contain: ${needle}`);
+}
+if (!source.includes('"context.cost"') || !source.includes('"context.tokens"')) {
+	throw new Error('context cost copy keys must exist in both dictionaries');
 }
 
 console.log('client wiring OK');

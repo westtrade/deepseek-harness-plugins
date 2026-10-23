@@ -31,7 +31,9 @@ window.__ModuleLoader__.load({
 			"column.directory": "Directory",
 			"column.spent": "Spent",
 			"row.sessions": "{sessions} sessions · {tokens} tokens",
-			"row.unpriced": "not priced by routerai.ru: {models}"
+			"row.unpriced": "not priced by routerai.ru: {models}",
+			"context.cost": "≈ {cost} of context",
+			"context.tokens": "Context: {tokens} tokens"
 		};
 		const zh = {
 			"panel.title": "项目花费",
@@ -45,7 +47,9 @@ window.__ModuleLoader__.load({
 			"column.directory": "目录",
 			"column.spent": "已花费",
 			"row.sessions": "{sessions} 个会话 · {tokens} 令牌",
-			"row.unpriced": "routerai.ru 无定价：{models}"
+			"row.unpriced": "routerai.ru 无定价：{models}",
+			"context.cost": "上下文约 {cost}",
+			"context.tokens": "上下文：{tokens} 令牌"
 		};
 		/** Money the way this meter reports it: `1 234,56 ₽`. */
 		function formatRub(value) {
@@ -722,6 +726,54 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		/**
+		* Composer dock chip: what the current context costs to send.
+		*
+		* The token count comes from the `contextPressure` projection — the same
+		* feed as the shipped context meter beside the send button — and the route
+		* from `modelSelection`, so the chip prices the model the next request will
+		* actually use. Prices reuse the table the badges already load, so the chip
+		* costs no extra request.
+		*
+		* Renders nothing until both the projection and the price are known, the
+		* same way the shipped meter stays silent without a reported capacity.
+		*
+		* @param props - the dock's session projections and copy seat.
+		* @returns the chip, or nothing.
+		*/
+		function ContextCostDock({ useProjection, t }) {
+			const pressure = useProjection("contextPressure");
+			const selection = useProjection("modelSelection");
+			const [table, setTable] = react.useState(null);
+			react.useEffect(() => {
+				let live = true;
+				void priceTable().then((models) => {
+					if (live) setTable(models);
+				});
+				return () => {
+					live = false;
+				};
+			}, []);
+			// `projectedTokens` is pressure plus whatever the surface added since the
+			// last usage sample: the best estimate of the next prompt's size.
+			const tokens = pressure?.projectedTokens ?? pressure?.pressureTokens;
+			const route = selection?.next ?? selection?.lastUsed;
+			if (typeof tokens !== "number" || tokens <= 0) return null;
+			if (route === null || route === undefined || typeof route.model !== "string") return null;
+			if (table === null) return null;
+			const price = lookupModelPrice(table, `${route.provider}/${route.model}`) ?? lookupModelPrice(table, route.model);
+			if (price === undefined) return null;
+			// ponytail: the whole context at the prompt rate. Cache hits bill
+			// cheaper, so this is an upper bound; split `cacheRead` out once the
+			// pressure projection reports cached tokens.
+			const cost = tokens * price.prompt;
+			return react.createElement("div", {
+				style: { display: "flex", justifyContent: "center", padding: "2px 0" },
+				title: `${t("context.tokens", { tokens: formatTokens(tokens) })} · ${route.provider}/${route.model}`
+			}, react.createElement("span", {
+				style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" }
+			}, t("context.cost", { cost: formatRub(cost) })));
+		}
+		/**
 		* Client plugin body: register the panel icon (carrying the total spend) and
 		* the panel body.
 		* @param ctx - client root context carrying slots and locale.
@@ -740,6 +792,12 @@ window.__ModuleLoader__.load({
 				key: "project-cost",
 				locale: NS
 			}, CostPanel)), "project-cost: panel body");
+			ctx.effect(() => ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+				name: "conversation.input.dock",
+				id: "project-cost-context",
+				order: 30,
+				locale: NS
+			}, ContextCostDock)), "project-cost: context cost dock");
 			ctx.effect(() => startTreeCosts(), "project-cost: tree badges");
 			ctx.effect(() => startChatCosts(), "project-cost: chat badges");
 		}
