@@ -168,6 +168,7 @@ try {
 	}
 	ok('board route effect registered', host.effects.includes('excalidraw: board route'));
 
+	// --- discovery routes: how a caller finds its own board ---
 	const route = host.routes.get('prefix:/api/excalidraw');
 	const callBoard = (method, url, body) => call(route.handler, method, url, body);
 
@@ -242,6 +243,27 @@ try {
 	// the plugin source.
 	const traversal = await callBoard('GET', '/api/excalidraw/assets/%2e%2e/%2e%2e/lib/index.js');
 	ok('path traversal is refused', (traversal.status === 403 || traversal.status === 404) && !traversal.raw.includes('registerTools'), `${traversal.status}`);
+
+	// --- the manifest: everything an agent needs, in one request ---
+	const manifest = await callBoard('GET', '/api/excalidraw/manifest');
+	ok('the manifest serves', manifest.status === 200, String(manifest.status));
+	ok('the manifest lists both tools', Array.isArray(manifest.body.tools) && manifest.body.tools.length === 2, JSON.stringify(manifest.body.tools?.map((tool) => tool.name)));
+	ok('the manifest tools carry descriptions', manifest.body.tools.every((tool) => typeof tool.description === 'string' && tool.description.length > 40));
+	ok('the manifest says how to find your board', typeof manifest.body.findingYourBoard?.fromTheTools === 'string' && manifest.body.findingYourBoard.fromTheShell.includes('$DSH_SESSION_ID'));
+	ok('the manifest documents the board listing route', manifest.body.findingYourBoard.byListing.includes('/api/excalidraw/boards'));
+	ok('the manifest lists the endpoints', Array.isArray(manifest.body.endpoints) && manifest.body.endpoints.length >= 4);
+	ok('the manifest offers element skeletons', Array.isArray(manifest.body.elementSkeleton?.examples) && manifest.body.elementSkeleton.examples.length >= 4);
+	ok('the manifest warns about arrow skeletons', manifest.body.elementSkeleton.avoid.includes('arrow'), String(manifest.body.elementSkeleton.avoid));
+	const manifestWrite = await callBoard('POST', '/api/excalidraw/manifest', {});
+	ok('the manifest rejects writes', manifestWrite.status === 405, String(manifestWrite.status));
+	ok('the manifest needs no session cookie', manifest.headers['content-type']?.startsWith('application/json') === true);
+
+	// --- listing boards: find one without knowing a session id ---
+	const listing = await callBoard('GET', '/api/excalidraw/boards');
+	ok('the board listing serves', listing.status === 200 && Array.isArray(listing.body.boards), JSON.stringify(listing.body).slice(0, 120));
+	ok('the listing names the boards that exist', listing.body.boards.some((entry) => entry.sessionId === 'session-alpha'), JSON.stringify(listing.body.boards));
+	ok('the listing carries a timestamp and a size', listing.body.boards.every((entry) => typeof entry.updatedAt === 'number' && typeof entry.elements === 'number'));
+	ok('the listing is newest first', listing.body.boards[0].updatedAt >= listing.body.boards[listing.body.boards.length - 1].updatedAt);
 
 	// --- the AI tools ---
 	const signal = () => ({ signal: new AbortController().signal, agent: { session: { id: 'session-alpha' } } });

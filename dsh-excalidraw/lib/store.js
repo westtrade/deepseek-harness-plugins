@@ -77,9 +77,25 @@ export async function openBoardStore({ file }) {
 			await persist();
 			return JSON.parse(JSON.stringify(next));
 		},
-		/** Every board id (for tool summaries and debugging). */
+		/** Every board id, most recently changed first. */
 		list() {
-			return Object.keys(boards);
+			return Object.keys(boards).sort((left, right) => (boards[right]?.updatedAt ?? 0) - (boards[left]?.updatedAt ?? 0));
+		},
+		/**
+		 * Every board as a summary: which chat, when it changed, how much is on it.
+		 *
+		 * This is how a caller finds a board without knowing a session id — the
+		 * plugin used to offer no way at all, so an agent had to read this very
+		 * file to discover its own board.
+		 *
+		 * @returns one entry per board, most recently changed first.
+		 */
+		summaries() {
+			return this.list().map((sessionId) => ({
+				sessionId,
+				updatedAt: boards[sessionId]?.updatedAt ?? 0,
+				elements: Array.isArray(boards[sessionId]?.elements) ? boards[sessionId].elements.length : 0
+			}));
 		}
 	};
 }

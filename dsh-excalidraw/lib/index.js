@@ -42,8 +42,22 @@ export const inject = ['webServer'];
 /** URL prefix under which everything this plugin serves lives. */
 export const BASE_PATH = '/api/excalidraw';
 
+/** The board collection: list the boards that exist. */
+const BOARDS_PATH = `${BASE_PATH}/boards`;
+
 /** The board API: one chat, one scene. */
 const BOARDS_PREFIX = `${BASE_PATH}/boards/`;
+
+/**
+ * The self-description route.
+ *
+ * An agent that works through a shell (rather than through this plugin's tools)
+ * has no way to know which board is its own, or even that the plugin exists:
+ * this route answers both in one request. The tools do not need it — they
+ * default to the calling chat — but the HTTP path did, and hunting for a session
+ * id inside `$DSH_HOME/excalidraw-boards.json` is not an interface.
+ */
+const MANIFEST_PATH = `${BASE_PATH}/manifest`;
 
 /** Largest accepted board body (a scene can be large; be generous). */
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -99,6 +113,8 @@ export async function apply(ctx, config = {}) {
 		file: config.storePath ?? `${dshHome}/excalidraw-boards.json`
 	});
 
+	/** The tool surface this plugin declares, for the manifest route. */
+	const toolCatalog = [];
 	const staticRoot = fileURLToPath(new URL('../static/', import.meta.url)).replace(/[\\/]+$/, '');
 
 	/**
@@ -136,6 +152,70 @@ export async function apply(ctx, config = {}) {
 			throw error;
 		}
 	}
+
+	/**
+	 * `GET /api/excalidraw/boards` — every board, newest first.
+	 *
+	 * Finds a board without knowing a session id: an agent can look for the chat
+	 * it is working in, and a person can see what exists at all.
+	 */
+	const boardsIndexHandler = (req, res) => {
+		if (req.method !== 'GET' && req.method !== 'HEAD') {
+			res.writeHead(405, { allow: 'GET, HEAD' });
+			res.end();
+			return;
+		}
+		sendJson(res, 200, { ok: true, boards: store.summaries() });
+	};
+
+	/**
+	 * `GET /api/excalidraw/manifest` — how to use this plugin, in one answer.
+	 */
+	const manifestHandler = (req, res) => {
+		if (req.method !== 'GET' && req.method !== 'HEAD') {
+			res.writeHead(405, { allow: 'GET, HEAD' });
+			res.end();
+			return;
+		}
+		sendJson(res, 200, {
+			plugin: name,
+			package: 'dsh-excalidraw',
+			summary: 'One Excalidraw board per chat, shared by the person in the right sidebar and by the AI.',
+			tools: toolCatalog,
+			findingYourBoard: {
+				fromTheTools: 'excalidraw_read / excalidraw_write default to the calling chat: no session id needed.',
+				fromTheShell: 'The shell environment carries $DSH_SESSION_ID — that is this chat, and its board is /api/excalidraw/boards/$DSH_SESSION_ID.',
+				byListing: `GET ${BOARDS_PATH} lists every board (sessionId, updatedAt, element count), newest first.`
+			},
+			board: {
+				elements: 'array of Excalidraw elements',
+				appState: 'object; only viewBackgroundColor, gridSize, scrollX, scrollY and zoom are kept'
+			},
+			elementSkeleton: {
+				note: 'Plain skeletons are accepted: the board converts them with Excalidraw itself on load and stores the canonical form.',
+				examples: [
+					{ type: 'rectangle', x: 100, y: 100, width: 200, height: 120, backgroundColor: '#a5d8ff', strokeColor: '#1971c2' },
+					{ type: 'ellipse', x: 340, y: 100, width: 120, height: 120, backgroundColor: '#ffec99' },
+					{ type: 'diamond', x: 500, y: 100, width: 120, height: 120, strokeColor: '#1971c2' },
+					{ type: 'line', x: 100, y: 300, points: [[0, 0], [120, 80]], strokeColor: '#1e1e1e', strokeWidth: 2 },
+					{ type: 'text', x: 100, y: 400, text: 'hello', fontSize: 20 }
+				],
+				avoid: 'Do not send type "arrow": Excalidraw\'s converter mangles arrow skeletons (they come back as slivers). Use a line plus two short lines for the head.'
+			},
+			endpoints: [
+				{ method: 'GET', path: MANIFEST_PATH, purpose: 'this description' },
+				{ method: 'GET', path: BOARDS_PATH, purpose: 'every board, newest first' },
+				{ method: 'GET', path: `${BOARDS_PREFIX}<sessionId>`, purpose: "read one chat's scene" },
+				{ method: 'PUT', path: `${BOARDS_PREFIX}<sessionId>`, purpose: '{ elements, appState } replaces the scene; skeletons are normalized on load' },
+				{ method: 'GET', path: `${BASE_PATH}/board.html?session=<sessionId>`, purpose: 'the board page the sidebar tab embeds' }
+			],
+			notes: [
+				'Every route here is open to any caller, the AI included: there is no human-only operation on a board.',
+				"Writes bump `updatedAt`; an open tab polls it and pulls the newer scene in, so an agent's strokes appear without a reload.",
+				"A tab only saves real edits (element versions), so it never overwrites an agent's work with an idle copy."
+			]
+		});
+	};
 
 	/** `GET/PUT /api/excalidraw/boards/<sessionId>` */
 	const boardsHandler = async (req, res) => {
@@ -191,12 +271,14 @@ export async function apply(ctx, config = {}) {
 		handler: (req, res) => {
 			const url = new URL(req.url ?? '/', 'http://dsh.invalid');
 			const pathname = url.pathname;
+			if (pathname === MANIFEST_PATH) return manifestHandler(req, res);
+			if (pathname === BOARDS_PATH) return boardsIndexHandler(req, res);
 			if (pathname.startsWith(BOARDS_PREFIX)) return boardsHandler(req, res);
 			return staticHandler(req, res);
 		}
 	}), 'excalidraw: board route');
 
-	registerTools(ctx, { store });
+	registerTools(ctx, { store, toolCatalog });
 }
 
 /**
@@ -211,10 +293,15 @@ export async function apply(ctx, config = {}) {
  * @param deps - the board store.
  */
 function registerTools(ctx, deps) {
-	const { store } = deps;
+	const { store, toolCatalog = [] } = deps;
 	/** One text block. */
 	const text = (value) => [{ type: 'text', text: value }];
-	/** Resolve which board a call means: the calling chat by default. */
+	/**
+	 * Which board a call means: the calling chat by default.
+	 *
+	 * A model never has to know its own session id — `exec.agent.session.id` is
+	 * the chat it is answering in, and its board is that chat's board.
+	 */
 	const boardOf = (exec, sessionId) => {
 		const id = typeof sessionId === 'string' && sessionId !== ''
 			? sessionId
@@ -227,15 +314,12 @@ function registerTools(ctx, deps) {
 	/** The element shape both tools accept (opaque JSON). */
 	const elementShape = { type: 'object' };
 
-	ctx.inject(['tools'], (toolCtx) => {
-		/** Register one tool; one bad tool costs one tool, not all of them. */
-		const register = (definition) => {
-			try {
-				toolCtx.tools.register(definition);
-			} catch (error) {
-				toolCtx.logger?.warn?.(`excalidraw: tool "${definition.name}" was not registered: ${String(error?.message ?? error)}`);
-			}
-		};
+	/** Every declared tool, published to the manifest and registered at the end. */
+	const definitions = [];
+	/** Declare one tool. */
+	const register = (definition) => {
+		definitions.push(definition);
+	};
 
 		register({
 			name: 'excalidraw_read',
@@ -336,5 +420,26 @@ function registerTools(ctx, deps) {
 				};
 			}
 		});
+
+	/*
+	 * Publish first, then hand the list to the registry.
+	 *
+	 * A composition with no tool runtime never runs the registration below, and
+	 * such a deployment is exactly who the manifest route serves — so the catalog
+	 * is filled from the declarations, not from what registered. A definition the
+	 * registry rejects is logged rather than thrown: one bad tool must cost one
+	 * tool, never all of them.
+	 */
+	for (const definition of definitions) {
+		toolCatalog.push({ name: definition.name, description: definition.description, parameters: definition.parameters ?? {} });
+	}
+	ctx.inject(['tools'], (toolCtx) => {
+		for (const definition of definitions) {
+			try {
+				toolCtx.tools.register(definition);
+			} catch (error) {
+				toolCtx.logger?.warn?.(`excalidraw: tool "${definition.name}" was not registered: ${String(error?.message ?? error)}`);
+			}
+		}
 	});
 }
