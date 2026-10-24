@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-import { apply } from '../lib/index.js';
+import { apply, renderBoardLines } from '../lib/index.js';
 
 let pass = 0;
 let fail = 0;
@@ -307,6 +307,11 @@ try {
 	ok('excalidraw_read defaults to the calling chat', readValue.sessionId === 'session-alpha');
 	ok('excalidraw_read returns the drawn elements', readValue.elements.length === 2 && readValue.elements[1].text === 'привет');
 	ok('excalidraw_read renders for the model', readTool.output.render({}, readValue)[0].text.includes('2 element(s)'));
+	const linesView = readTool.output.render({}, readValue)[0].text;
+	ok('the default view is one short line per element', /\.{0,4}1 rectangle/.test(linesView) || linesView.split('\n')[1].trim().startsWith('1 '), linesView);
+	ok('the compact view keeps ids and drops bookkeeping fields', linesView.includes('id=') && !linesView.includes('versionNonce') && !linesView.includes('seed'));
+	ok('deleted elements are hidden from the compact view', renderBoardLines({ sessionId: 'session-alpha', elements: [...readValue.elements, { id: 'gone', type: 'rectangle', x: 0, y: 0, width: 1, height: 1, isDeleted: true }] }).includes('1 deleted hidden'));
+	ok('format json still returns the canonical elements', readTool.output.render({ format: 'json' }, readValue)[0].text.includes('"type"'));
 	const readOther = await readTool.execute({ sessionId: 'session-beta' }, signal());
 	ok('excalidraw_read accepts an explicit session', readOther.sessionId === 'session-beta' && readOther.elements.length === 0);
 	const readNoSession = await readTool.execute({}, { signal: new AbortController().signal }).then(() => undefined, (error) => error);

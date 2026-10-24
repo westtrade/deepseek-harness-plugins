@@ -357,6 +357,78 @@ export async function apply(ctx, config = {}) {
 	registerTools(ctx, { store, toolCatalog });
 }
 
+
+/** Rounded coordinate, `0` for anything unset. */
+const round = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : 0);
+
+/** Bounding box of the whole drawing, as `x,y → x2,y2`. */
+function boardFrame(elements) {
+	const xs = [];
+	const ys = [];
+	for (const el of elements) {
+		const x = round(el.x);
+		const	y = round(el.y);
+		xs.push(x, x + round(el.width));
+		ys.push(y, y + round(el.height));
+	}
+	return `${Math.min(...xs)},${Math.min(...ys)} → ${Math.max(...xs)},${Math.max(...ys)}`;
+}
+
+/**
+ * The board as one short line per element.
+ *
+ * Excalidraw's canonical JSON repeats about twenty bookkeeping fields per
+ * element (seed, versionNonce, updated, index, boundElements, roundness …), so
+ * a small sketch serialises to ~17 kB. That is fine once, but the tool result
+ * stays in the conversation, so every later request pays for it again — on a
+ * 114-step session one board read costs more than a ruble.
+ *
+ * Only what a person would read off the drawing is printed: what kind of thing
+ * it is, where, how big, its text, and the bits that matter for writing back
+ * (id, container, group, fill, point count). Deleted elements are dropped.
+ *
+ * @param board - `{ sessionId, updatedAt, elements }`.
+ * @returns the model-facing text.
+ */
+export function renderBoardLines(board) {
+	const all = Array.isArray(board.elements) ? board.elements : [];
+	const live = all.filter((el) => el !== null && typeof el === 'object' && el.isDeleted !== true);
+	const hidden = all.length - live.length;
+	const header = [
+		`Board ${board.sessionId} · ${live.length} element(s)`,
+		hidden > 0 ? `${hidden} deleted hidden` : '',
+		live.length > 0 ? `frame ${boardFrame(live)}` : '',
+	].filter(Boolean).join(' · ');
+	const lines = [header];
+	for (let index = 0; index < live.length; index += 1) {
+		const el = live[index];
+		const parts = [
+			String(index + 1).padStart(2, ' '),
+			String(el.type ?? '?').padEnd(9, ' '),
+			`${round(el.x)},${round(el.y)}`,
+			`${round(el.width)}x${round(el.height)}`,
+		];
+		const label = typeof el.text === 'string' ? el.text.trim().replace(/\s*\n\s*/g, ' / ') : '';
+		if (label !== '') parts.push(label);
+		if (typeof el.id === 'string' && el.id !== '') parts.push(`id=${el.id}`);
+		if (typeof el.containerId === 'string' && el.containerId !== '') parts.push(`in=${el.containerId}`);
+		if (Array.isArray(el.points) && el.points.length > 0) parts.push(`pts=${el.points.length}`);
+		if (Array.isArray(el.groupIds) && el.groupIds.length > 0) parts.push('grp');
+		if (typeof el.backgroundColor === 'string' && el.backgroundColor !== 'transparent') parts.push(`fill=${el.backgroundColor}`);
+		if (typeof el.strokeColor === 'string' && el.strokeColor !== '#1e1e1e') parts.push(`stroke=${el.strokeColor}`);
+		if (typeof el.link === 'string' && el.link !== '') parts.push(`link=${el.link}`);
+		if (el.locked === true) parts.push('locked');
+		lines.push(parts.join(' '));
+	}
+	// A pathological board still must not flood the context: 600 lines is
+	// already far more than anyone reads, and the JSON format can be asked for.
+	const MAX_LINES = 600;
+	if (lines.length > MAX_LINES + 1) {
+		return [...lines.slice(0, MAX_LINES + 1), `… ${lines.length - MAX_LINES - 1} more element(s); pass format: 'json' for everything`].join('\n');
+	}
+	return lines.join('\n');
+}
+
 /**
  * Register the AI-facing tools: read a board, and draw on it.
  *
@@ -399,9 +471,10 @@ function registerTools(ctx, deps) {
 
 		register({
 			name: 'excalidraw_read',
-			description: 'Read this chat\'s Excalidraw board: every element (shapes, text, arrows, images) with its coordinates, size, color and text content, plus how the scene is framed. The board is shared with the person in the sidebar; reading it never changes anything.',
+			description: 'Read this chat\'s Excalidraw board: one line per element with its type, position, size, text and the ids needed to edit it; deleted elements are hidden. Pass format: \'json\' for the full canonical element JSON. Reading never changes the board.',
 			parameters: {
-				sessionId: { type: 'string', description: 'Optional: another chat\'s board. Defaults to the calling chat.' }
+				sessionId: { type: 'string', description: 'Optional: another chat\'s board. Defaults to the calling chat.' },
+				format: { type: 'string', enum: ['lines', 'json'], description: '`lines` (default) is a compact one-line-per-element view; `json` returns every canonical element with all its fields.' }
 			},
 			output: {
 				schema: {
@@ -415,10 +488,13 @@ function registerTools(ctx, deps) {
 						appState: { type: 'object' }
 					}
 				},
-				render: (_args, value) => {
-					const scene = JSON.stringify(value.elements);
-					const trimmed = scene.length > 40000 ? `${scene.slice(0, 40000)}… (truncated)` : scene;
-					return text(`Board for chat ${value.sessionId} (updated ${new Date(value.updatedAt).toISOString()}): ${value.elements.length} element(s)\n${trimmed}`);
+				render: (args, value) => {
+					if (args?.format === 'json') {
+						const scene = JSON.stringify(value.elements);
+						const trimmed = scene.length > 40000 ? `${scene.slice(0, 40000)}… (truncated)` : scene;
+						return text(`Board for chat ${value.sessionId} (updated ${new Date(value.updatedAt).toISOString()}): ${value.elements.length} element(s)\n${trimmed}`);
+					}
+					return text(renderBoardLines(value));
 				}
 			},
 			async execute(args, exec) {
