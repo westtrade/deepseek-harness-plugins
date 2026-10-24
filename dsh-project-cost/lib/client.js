@@ -131,16 +131,25 @@ window.__ModuleLoader__.load({
 			return store;
 		}
 		/**
-		* The panellist entry: the ruble glyph plus — on the same row — the total
-		* spend, and behind a slash the routerai.ru credit that is left.
-		* `PanelRow` renders its label from a resolved string and offers no
-		* content slot beside it, so the money rides the row's `::after` through
-		* one data attribute (the same technique as the tree badges). The badge
-		* follows the label and hides with it in the collapsed rail.
+		* The panellist entry: the ruble glyph, the refresh button, and — on the
+		* same row — the total spend with the routerai.ru credit behind a slash.
+		*
+		* `PanelRow` renders its label from a resolved string and offers no content
+		* slot beside it, so the money rides the row's `::after` through one data
+		* attribute (the same technique as the tree badges) and the button is
+		* positioned against the row's own box. The badge follows the label and
+		* hides with it in the collapsed rail, and the button hides there too —
+		* the rail's single icon has to keep opening the panel.
+		*
+		* The button spins whenever a refresh is in flight, whoever started it: the
+		* one-minute timer, this button, the panel's own Refresh, or a decorator
+		* that asked for a report. All of them go through `loadReport`, so
+		* `store.loading` is the single source for that state.
 		*/
-		function PanelEntry({ size }) {
+		function PanelEntry({ size, t }) {
 			const state = useReport();
 			const host = react.useRef(null);
+			const [wide, setWide] = react.useState(false);
 			react.useEffect(() => {
 				loadReport();
 				const timer = setInterval(loadReport, REFRESH_MS);
@@ -150,10 +159,12 @@ window.__ModuleLoader__.load({
 				ensureTreeCostStyle();
 				const row = host.current === null ? null : host.current.closest("button");
 				if (row === null) return;
-				const total = state.report?.totals?.costRub;
 				// `PanelRow` renders its title span only while the sidebar is wide.
-				const wide = row.querySelectorAll(":scope > span").length > 1;
-				if (total === undefined || total === null || !wide) {
+				const isWide = row.querySelectorAll(":scope > span").length > 1;
+				setWide((previous) => previous === isWide ? previous : isWide);
+				row.setAttribute(ROW_ATTR, "panel");
+				const total = state.report?.totals?.costRub;
+				if (total === undefined || total === null || !isWide) {
 					row.removeAttribute(TOTAL_ATTR);
 					return;
 				}
@@ -164,7 +175,36 @@ window.__ModuleLoader__.load({
 					: formatRub(total);
 				row.setAttribute(TOTAL_ATTR, label);
 			});
-			return react.createElement("span", {
+			const refresh = react.createElement("span", {
+				[REFRESH_ATTR]: state.loading ? "busy" : "idle",
+				role: "button",
+				tabIndex: 0,
+				"aria-label": t === undefined ? "Refresh" : t("panel.refresh"),
+				title: t === undefined ? "Refresh" : t("panel.refresh"),
+				onClick: (event) => {
+					// The row itself selects the panel on click; this control only refreshes.
+					event.preventDefault();
+					event.stopPropagation();
+					loadReport();
+				},
+				onKeyDown: (event) => {
+					if (event.key !== "Enter" && event.key !== " ") return;
+					event.preventDefault();
+					event.stopPropagation();
+					loadReport();
+				}
+			}, react.createElement("svg", {
+				width: 14,
+				height: 14,
+				viewBox: "0 0 16 16",
+				fill: "none",
+				stroke: "currentColor",
+				strokeWidth: 1.6,
+				strokeLinecap: "round",
+				strokeLinejoin: "round",
+				"aria-hidden": "true"
+			}, react.createElement("path", { d: "M13.5 8a5.5 5.5 0 1 1-1.61-3.89" }), react.createElement("path", { d: "M13.5 2.6V5.5h-2.9" })));
+			return react.createElement(react.Fragment, null, react.createElement("span", {
 				ref: host,
 				"aria-hidden": "true",
 				style: {
@@ -172,7 +212,7 @@ window.__ModuleLoader__.load({
 					fontWeight: 600,
 					lineHeight: String(size) + "px"
 				}
-			}, "₽");
+			}, "₽"), wide ? refresh : null);
 		}
 		/** One directory row: the directory on the left, the money opposite it. */
 		function DirectoryRow({ row, title, t }) {
@@ -342,6 +382,10 @@ window.__ModuleLoader__.load({
 		*/
 		/** Attribute carrying the total spend painted onto the panel-list row. */
 		const TOTAL_ATTR = "data-dshpc-total";
+		/** Attribute marking the panel-list row so the refresh button can anchor to it. */
+		const ROW_ATTR = "data-dshpc-row";
+		/** Attribute driving the refresh glyph: `busy` while a report is in flight. */
+		const REFRESH_ATTR = "data-dshpc-refresh";
 		/** Attribute carrying the money label painted onto one tree row. */
 		const COST_ATTR = "data-dshpc-cost";
 		/** Attribute marking the row kind (`dir` | `session`) for badge styling. */
@@ -361,7 +405,7 @@ window.__ModuleLoader__.load({
 		* drop-marker rule is class-based and out-specifies ours, so a drag marker
 		* correctly replaces the badge while dragging.
 		*/
-		const TREE_COST_CSS = '[data-dshpc-cost]::after{content:attr(data-dshpc-cost);flex:none;margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap}[data-dshpc-kind="dir"][data-dshpc-cost]::after{color:var(--dsw-alias-label-secondary);font-weight:600}[data-dshpc-total]::after{content:attr(data-dshpc-total);flex:none;margin-left:auto;padding-left:12px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:22px;font-variant-numeric:tabular-nums;white-space:nowrap}[data-dshpc-turn]::after{content:attr(data-dshpc-turn);flex:none;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:24px;font-variant-numeric:tabular-nums;white-space:nowrap}';
+		const TREE_COST_CSS = '[data-dshpc-cost]::after{content:attr(data-dshpc-cost);flex:none;margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap}[data-dshpc-kind="dir"][data-dshpc-cost]::after{color:var(--dsw-alias-label-secondary);font-weight:600}[data-dshpc-row]{position:relative}[data-dshpc-total]::after{content:attr(data-dshpc-total);flex:none;margin-left:auto;padding-left:12px;padding-right:22px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:22px;font-variant-numeric:tabular-nums;white-space:nowrap}[data-dshpc-refresh]{position:absolute;top:50%;right:4px;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:6px;color:var(--dsw-alias-label-tertiary);cursor:pointer}[data-dshpc-refresh]:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}[data-dshpc-refresh]:focus-visible{outline:2px solid var(--dsw-alias-label-primary);outline-offset:1px}[data-dshpc-refresh="busy"]{color:var(--dsw-alias-label-primary)}[data-dshpc-refresh="busy"] svg{animation:dshpc-spin .8s linear infinite}@keyframes dshpc-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}[data-dshpc-turn]::after{content:attr(data-dshpc-turn);flex:none;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:24px;font-variant-numeric:tabular-nums;white-space:nowrap}';
 		/** Badge money: spend under a kopeck keeps four digits instead of "0,00". */
 		function formatRubBadge(value) {
 			if (value > 0 && value < 0.01) {
@@ -785,6 +829,7 @@ window.__ModuleLoader__.load({
 				name: "sidebar.panellist",
 				id: "project-cost",
 				order: 60,
+				locale: NS,
 				label: () => t("panel.title")
 			}, PanelEntry)), "project-cost: panel icon");
 			ctx.effect(() => ctx.slots.inject("main", () => ctx.slots.register({
