@@ -1,11 +1,12 @@
 /**
  * Durable per-chat access store for `dsh-session-gate`.
  *
- * One record per chat: which MCP servers the model may NOT see, and whether the
- * model may read image files (`read_image`). Absent records mean "everything
- * allowed", which is the harness behaviour without this plugin — so installing
- * it never silently tightens an existing chat, and a newly connected MCP server
- * is attached to every chat until a person unchecks it.
+ * One record per chat: which MCP servers the chat allows and whether the model
+ * may read image files (`read_image`). Everything is OFF by default, so an
+ * absent record means "nothing allowed": a chat that never opened the dialog
+ * exposes no MCP tool and no image reading, and a server that connects after a
+ * choice was made does not quietly appear in it. That is why the record is an
+ * inclusion list rather than a list of exclusions.
  *
  * The file is `$DSH_HOME/session-gate.json`, written through a temp file +
  * rename so a crash never leaves half a record.
@@ -22,13 +23,13 @@ import path from 'node:path';
 import os from 'node:os';
 
 /** Serialized store version; a future change bumps it and migrates on read. */
-export const STORE_VERSION = 1;
+export const STORE_VERSION = 2;
 
 /** Most chats the store keeps a record for. */
 export const MAX_SESSIONS = 5000;
 
-/** Most servers one chat may switch off. */
-export const MAX_OFF = 64;
+/** Most servers one chat may allow. */
+export const MAX_ON = 64;
 
 /**
  * MCP server names are the `serverName` values of `dsh-mcp-client` rows: the
@@ -62,18 +63,18 @@ export class GateInputError extends Error {
 	}
 }
 
-/** Normalize the list of switched-off servers. */
-function normalizeOff(value) {
-	if (!Array.isArray(value)) throw new GateInputError('mcpOff must be an array of MCP server names', 'mcpOff');
-	const off = new Set();
+/** Normalize the list of allowed servers. */
+function normalizeOn(value) {
+	if (!Array.isArray(value)) throw new GateInputError('mcpOn must be an array of MCP server names', 'mcpOn');
+	const on = new Set();
 	for (const entry of value) {
-		if (typeof entry !== 'string') throw new GateInputError('mcpOff must hold MCP server names', 'mcpOff');
+		if (typeof entry !== 'string') throw new GateInputError('mcpOn must hold MCP server names', 'mcpOn');
 		const name = entry.trim();
-		if (!SERVER_NAME.test(name)) throw new GateInputError(`"${name}" is not an MCP server name`, 'mcpOff');
-		off.add(name);
+		if (!SERVER_NAME.test(name)) throw new GateInputError(`"${name}" is not an MCP server name`, 'mcpOn');
+		on.add(name);
 	}
-	if (off.size > MAX_OFF) throw new GateInputError(`a chat keeps at most ${String(MAX_OFF)} switched-off servers`, 'mcpOff');
-	return [...off].sort();
+	if (on.size > MAX_ON) throw new GateInputError(`a chat allows at most ${String(MAX_ON)} MCP servers`, 'mcpOn');
+	return [...on].sort();
 }
 
 /**
@@ -89,17 +90,17 @@ export function normalizeSelection(body, existing) {
 	if (body === null || typeof body !== 'object' || Array.isArray(body)) {
 		throw new GateInputError('the request body must be a JSON object');
 	}
-	const mcpOff = body.mcpOff === undefined && existing !== undefined ? existing.mcpOff : normalizeOff(body.mcpOff ?? []);
-	const photos = body.photos === undefined ? (existing === undefined ? true : existing.photos) : body.photos;
+	const mcpOn = body.mcpOn === undefined && existing !== undefined ? existing.mcpOn : normalizeOn(body.mcpOn ?? []);
+	const photos = body.photos === undefined ? (existing === undefined ? false : existing.photos) : body.photos;
 	if (typeof photos !== 'boolean') throw new GateInputError('photos must be a boolean', 'photos');
-	return { mcpOff: [...mcpOff], photos };
+	return { mcpOn: [...mcpOn], photos };
 }
 
 /** Whether two records say the same thing. */
 function sameSelection(left, right) {
 	return left.photos === right.photos
-		&& left.mcpOff.length === right.mcpOff.length
-		&& left.mcpOff.every((name, index) => name === right.mcpOff[index]);
+		&& left.mcpOn.length === right.mcpOn.length
+		&& left.mcpOn.every((name, index) => name === right.mcpOn[index]);
 }
 
 /**
@@ -113,7 +114,7 @@ function sameSelection(left, right) {
  */
 export async function openGateStore(options = {}) {
 	const file = options.file ?? defaultStorePath(options.home);
-	/** @type {Map<string, { mcpOff: string[], photos: boolean }>} */
+	/** @type {Map<string, { mcpOn: string[], photos: boolean }>} */
 	const selections = new Map();
 	let writeChain = Promise.resolve();
 
@@ -121,12 +122,19 @@ export async function openGateStore(options = {}) {
 	async function readDisk() {
 		try {
 			const parsed = JSON.parse(await readFile(file, 'utf8'));
-			/** @type {Map<string, { mcpOff: string[], photos: boolean }>} */
+			/** @type {Map<string, { mcpOn: string[], photos: boolean }>} */
 			const rows = new Map();
 			for (const [sessionId, raw] of Object.entries(parsed?.selections ?? {})) {
 				if (typeof sessionId !== 'string' || sessionId === '') continue;
 				try {
-					rows.set(sessionId, normalizeSelection(raw, undefined));
+					// v1 stored the servers switched OFF (`mcpOff`), and the
+					// inclusion list cannot be reconstructed from it. A v1 row also
+					// recorded the OLD default (everything on) for any switch the
+					// person did not touch, so it is reset to the new defaults
+					// (nothing allowed) rather than guessed back. A row with neither
+					// shape is corrupt and dropped, so the chat keeps the default.
+					const legacy = raw !== null && typeof raw === 'object' && !Array.isArray(raw.mcpOn) && Array.isArray(raw.mcpOff);
+					rows.set(sessionId, legacy ? { mcpOn: [], photos: false } : normalizeSelection(raw, undefined));
 				} catch {
 					// One unusable row must not cost every other chat its settings.
 				}
@@ -168,7 +176,7 @@ export async function openGateStore(options = {}) {
 		get(sessionId) {
 			if (typeof sessionId !== 'string' || sessionId === '') return undefined;
 			const row = selections.get(sessionId);
-			return row === undefined ? undefined : { mcpOff: [...row.mcpOff], photos: row.photos };
+			return row === undefined ? undefined : { mcpOn: [...row.mcpOn], photos: row.photos };
 		},
 		/**
 		 * Record one chat's access choices.

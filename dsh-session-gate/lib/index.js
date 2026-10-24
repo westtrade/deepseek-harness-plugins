@@ -5,11 +5,15 @@
  * The Web GUI shows one button in the composer tool row, beside «Workspace
  * Write». It opens a dialog with a checkbox per MCP server and one switch for
  * `read_image`. Both live in this plugin's store, keyed by session id, and are
- * enforced on the live agent with `tools.restrict()`: a switched-off server's
- * tools are removed from what the model sees (and therefore from what it can
- * call) for that chat only, and `read_image` goes with them when image reading
- * is off. With nothing switched off the chat behaves exactly as before, so the
- * plugin never silently tightens an existing chat.
+ * enforced on the live agent with `tools.restrict()`: every tool of a server the
+ * chat has not allowed is removed from what the model sees (and therefore from
+ * what it can call) for that chat only, and `read_image` is removed unless the
+ * chat allows it.
+ *
+ * Everything is OFF by default: a chat that never opened the dialog has no MCP
+ * tools and cannot read images, and a server that connects later does not
+ * appear in any chat until someone ticks it. The store keeps an inclusion list
+ * for exactly that reason.
  *
  * Mount it beside the Web server (the web profile already composes one):
  *
@@ -201,15 +205,16 @@ export async function apply(ctx, config = {}) {
 	 */
 	function deniedTools(agent) {
 		const record = store.get(agent.session.id);
-		const off = new Set(record?.mcpOff ?? []);
+		const on = new Set(record?.mcpOn ?? []);
 		const deny = new Set();
 		for (const name of restrictableNames(agent)) {
 			const parsed = MCP_TOOL.exec(name);
 			if (parsed !== null) {
-				if (off.has(parsed[1])) deny.add(name);
+				// Default off: a server is usable only when the chat allows it.
+				if (!on.has(parsed[1])) deny.add(name);
 				continue;
 			}
-			if (name === PHOTO_TOOL && record?.photos === false) deny.add(name);
+			if (name === PHOTO_TOOL && record?.photos !== true) deny.add(name);
 		}
 		return deny;
 	}
@@ -349,9 +354,9 @@ export async function apply(ctx, config = {}) {
 	/** One chat's state, as the dialog reads it. */
 	async function stateView(sessionId) {
 		const record = store.get(sessionId);
-		const off = new Set(record?.mcpOff ?? []);
-		const photosAllowed = record?.photos ?? true;
-		const servers = serverCatalog().map((entry) => ({ ...entry, enabled: !off.has(entry.name) }));
+		const on = new Set(record?.mcpOn ?? []);
+		const photosAllowed = record?.photos === true;
+		const servers = serverCatalog().map((entry) => ({ ...entry, enabled: on.has(entry.name) }));
 		const route = routeOf(sessionId);
 		const capable = await imageCapability(route.provider, route.model);
 		return {
@@ -408,7 +413,13 @@ export async function apply(ctx, config = {}) {
 				sendJson(res, 404, { error: `session "${sessionId}" is not live` });
 				return;
 			}
-			await store.save(sessionId, { mcpOff: body.mcpOff, photos: body.photos });
+			// A page that still runs the pre-inclusion client sends `mcpOff`. It
+			// is translated rather than ignored: the difference between the two
+			// shapes is not something a person should have to refresh to notice.
+			const mcpOn = body.mcpOn === undefined && Array.isArray(body.mcpOff)
+				? serverCatalog().map((server) => server.name).filter((name) => !body.mcpOff.includes(name))
+				: body.mcpOn;
+			await store.save(sessionId, { mcpOn, photos: body.photos });
 			revision += 1;
 			for (const agent of ctx.agents.list()) {
 				if (agent.session?.id === sessionId) applyAgent(agent);

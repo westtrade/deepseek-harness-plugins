@@ -57,10 +57,10 @@ window.__ModuleLoader__.load({
 			"modal.close": "Close",
 			"mcp.title": "MCP servers",
 			"mcp.empty": "No MCP servers are connected in this deployment.",
-			"mcp.hint": "Unchecking a server hides its tools from the model in this chat.",
+			"mcp.hint": "Checked servers are available to the model in this chat; everything starts unchecked.",
 			"mcp.tools": "{count} tool(s)",
 			"photos.title": "The model may read images",
-			"photos.hint": "The read_image tool: PNG, JPEG, WebP and GIF files.",
+			"photos.hint": "Allows the read_image tool: PNG, JPEG, WebP and GIF files. Off by default.",
 			"photos.capable": "Model {model} accepts image input.",
 			"photos.incapable": "Model {model} does not accept image input, so photos cannot be read in this chat.",
 			"photos.unknown": "Whether the model accepts images could not be determined.",
@@ -85,10 +85,10 @@ window.__ModuleLoader__.load({
 			"modal.close": "Закрыть",
 			"mcp.title": "MCP-серверы",
 			"mcp.empty": "В этом профиле нет подключённых MCP-серверов.",
-			"mcp.hint": "Снятая галочка скрывает инструменты сервера от модели в этом чате.",
+			"mcp.hint": "Отмеченные серверы доступны модели в этом чате; по умолчанию не отмечено ничего.",
 			"mcp.tools": "инструментов: {count}",
 			"photos.title": "Агент может читать фотографии",
-			"photos.hint": "Инструмент read_image: файлы PNG, JPEG, WebP и GIF.",
+			"photos.hint": "Разрешает инструмент read_image: файлы PNG, JPEG, WebP и GIF. По умолчанию выключено.",
 			"photos.capable": "Модель {model} принимает изображения.",
 			"photos.incapable": "Модель {model} не принимает изображения — прочитать фото в этом чате не получится.",
 			"photos.unknown": "Не удалось определить, принимает ли модель изображения.",
@@ -104,10 +104,10 @@ window.__ModuleLoader__.load({
 			"modal.close": "关闭",
 			"mcp.title": "MCP 服务器",
 			"mcp.empty": "此部署中没有已连接的 MCP 服务器。",
-			"mcp.hint": "取消勾选后，该服务器的工具在本会话中对模型隐藏。",
+			"mcp.hint": "勾选的服务器在本会话中对模型可用；默认全部未勾选。",
 			"mcp.tools": "{count} 个工具",
 			"photos.title": "模型可以读取图片",
-			"photos.hint": "read_image 工具：PNG、JPEG、WebP 和 GIF 文件。",
+			"photos.hint": "启用 read_image 工具：PNG、JPEG、WebP 和 GIF 文件。默认关闭。",
 			"photos.capable": "模型 {model} 接受图片输入。",
 			"photos.incapable": "模型 {model} 不接受图片输入，因此本会话无法读取图片。",
 			"photos.unknown": "无法确定模型是否接受图片。",
@@ -272,11 +272,11 @@ window.__ModuleLoader__.load({
 			react.useEffect(() => {
 				if (open) void load();
 			}, [open, load]);
-			const persist = react.useCallback(async (mcpOff, photos) => {
+			const persist = react.useCallback(async (mcpOn, photos) => {
 				if (typeof sessionId !== "string" || sessionId === "") return;
 				setBusy(true);
 				try {
-					const payload = await callHost("POST", STATE_URL, { sessionId, mcpOff, photos });
+					const payload = await callHost("POST", STATE_URL, { sessionId, mcpOn, photos });
 					setState(payload);
 					setError(null);
 				} catch (failure) {
@@ -286,24 +286,26 @@ window.__ModuleLoader__.load({
 					setBusy(false);
 				}
 			}, [sessionId, t, load]);
-			const currentOff = state === null
+			// What the chat allows, as the Host reports it: everything is off
+			// until someone ticks it.
+			const currentOn = state === null
 				? []
-				: state.servers.filter((server) => server.enabled !== true).map((server) => server.name);
+				: state.servers.filter((server) => server.enabled === true).map((server) => server.name);
 			const toggleServer = async (name) => {
 				if (state === null) return;
-				const nextOff = currentOff.includes(name)
-					? currentOff.filter((entry) => entry !== name)
-					: [...currentOff, name];
+				const nextOn = currentOn.includes(name)
+					? currentOn.filter((entry) => entry !== name)
+					: [...currentOn, name];
 				// Show the tick at once; the save response reconciles it with the Host.
 				setState({
 					...state,
 					servers: state.servers.map((server) => (server.name === name ? { ...server, enabled: server.enabled !== true } : server))
 				});
-				await persist(nextOff, state.photos?.allowed === true);
+				await persist(nextOn, state.photos?.allowed === true);
 			};
 			const togglePhotos = async () => {
 				if (state === null) return;
-				await persist(currentOff, state.photos?.allowed !== true);
+				await persist(currentOn, state.photos?.allowed !== true);
 			};
 			const total = state === null ? 0 : state.servers.length;
 			const enabled = state === null ? 0 : state.servers.filter((server) => server.enabled === true).length;

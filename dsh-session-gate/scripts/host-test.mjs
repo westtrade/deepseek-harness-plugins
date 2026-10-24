@@ -238,60 +238,61 @@ const storePath = path.join(dir, 'session-gate.json');
 	ok('tool counts are real',
 		state.body?.servers?.find((server) => server.name === 'svelte')?.tools === 2,
 		JSON.stringify(state.body?.servers));
-	ok('every server is attached by default', state.body.servers.every((server) => server.enabled === true));
-	ok('reading images is allowed by default', state.body.photos.allowed === true);
+	ok('every server is off by default', state.body.servers.every((server) => server.enabled === false));
+	ok('reading images is off by default', state.body.photos.allowed === false);
 	ok('the default model is resolved into the capability line',
 		state.body.photos.capable === true && state.body.photos.model === 'default-model',
 		JSON.stringify(state.body.photos));
-	ok('no tool is hidden while everything is attached', dev.restrictions.length === 0, JSON.stringify(dev.restrictions));
+	ok('a chat with no live agent installs nothing yet', dev.restrictions.length === 0, JSON.stringify(dev.restrictions));
 }
 
-// --- a switched-off server hides exactly its tools -------------------------
+// --- a fresh agent starts with everything hidden ---------------------------
 {
 	const dev = fakeHost();
 	dev.addSession('chat-2');
-	const agent = dev.addAgent('chat-2');
+	dev.addAgent('chat-2');
 	await apply(dev.ctx, { storePath });
 	dev.seal();
 
-	ok('nothing is hidden before a change', dev.restrictions.length === 0);
-
-	let state = await call(dev, 'POST', {}, { sessionId: 'chat-2', mcpOff: ['svelte'], photos: true });
-	ok('POST answers the new state', state.status === 200, String(state.status));
-	ok('the unchecked server reads as detached', state.body?.servers?.find((server) => server.name === 'svelte')?.enabled === false);
-	ok('the checked server stays attached', state.body.servers.find((server) => server.name === 'solidcraft')?.enabled === true);
-	ok('only the switched-off server\'s tools are hidden',
-		JSON.stringify(dev.restrictions.at(-1)?.deny) === JSON.stringify(['mcp__svelte__get-documentation', 'mcp__svelte__list-sections']),
-		JSON.stringify(dev.restrictions.at(-1)));
-	ok('read_image stays while photos are allowed', !dev.restrictions.at(-1).deny.includes('read_image'));
-
-	// Unchecking on a chat with no live agent must not throw and must be stored.
-	const stored = await readFile(storePath, 'utf8');
-	ok('the choice lands on disk', stored.includes('"chat-2"') && stored.includes('svelte'), stored);
-
-	// Re-checking lifts the restriction instead of stacking a second one.
-	state = await call(dev, 'POST', { sessionId: 'chat-2' }, { mcpOff: [] });
-	ok('re-checking answers the state', state.status === 200);
-	ok('re-checking lifts the old restriction', dev.lifted.length === 1, JSON.stringify(dev.lifted));
-	ok('re-checking installs nothing', dev.restrictions.length === 1, JSON.stringify(dev.restrictions));
-	ok('agent registration reuses the same restriction', agent.id === 'chat-2');
+	const baseline = dev.restrictions.at(-1);
+	ok('the default chat hides every MCP tool and read_image',
+		baseline !== undefined && baseline.deny.length === 4
+			&& baseline.deny.includes('read_image')
+			&& baseline.deny.includes('mcp__svelte__list-sections'),
+		JSON.stringify(baseline));
+	ok('nothing else is hidden', !baseline.deny.includes('bash') && !baseline.deny.includes('read'));
 }
 
-// --- image reading off hides read_image ------------------------------------
+// --- an allowed server leaves only its tools visible ----------------------
 {
 	const dev = fakeHost();
 	dev.addSession('chat-3');
-	dev.addAgent('chat-3');
+	const agent = dev.addAgent('chat-3');
 	await apply(dev.ctx, { storePath });
 	dev.seal();
 
-	const state = await call(dev, 'POST', {}, { sessionId: 'chat-3', photos: false });
-	ok('photos off answers the state', state.status === 200);
-	ok('photos off is reported', state.body?.photos?.allowed === false);
-	ok('photos off hides read_image', JSON.stringify(dev.restrictions.at(-1)?.deny) === JSON.stringify(['read_image']), JSON.stringify(dev.restrictions.at(-1)));
+	let state = await call(dev, 'POST', {}, { sessionId: 'chat-3', mcpOn: ['svelte'], photos: true });
+	ok('POST answers the new state', state.status === 200, String(state.status));
+	ok('the allowed server reads as attached', state.body?.servers?.find((server) => server.name === 'svelte')?.enabled === true);
+	ok('the other server stays detached', state.body.servers.find((server) => server.name === 'solidcraft')?.enabled === false);
+	ok('allowing a server leaves exactly the other servers hidden',
+		JSON.stringify(dev.restrictions.at(-1)?.deny) === JSON.stringify(['mcp__solidcraft__execute']),
+		JSON.stringify(dev.restrictions.at(-1)));
+	ok('allowing photos keeps read_image', !dev.restrictions.at(-1).deny.includes('read_image'));
+
+	const stored = await readFile(storePath, 'utf8');
+	ok('the choice lands on disk', stored.includes('"chat-3"') && stored.includes('svelte'), stored);
+
+	// Clearing the list is the default again: everything hidden.
+	state = await call(dev, 'POST', { sessionId: 'chat-3' }, { mcpOn: [] });
+	ok('clearing the list answers the state', state.status === 200);
+	ok('clearing lifts the old restriction', dev.lifted.length >= 1, JSON.stringify(dev.lifted));
+	ok('clearing hides every MCP tool again', dev.restrictions.at(-1).deny.length === 3
+		&& dev.restrictions.at(-1).deny.every((name) => name.startsWith('mcp__')), JSON.stringify(dev.restrictions.at(-1)));
+	ok('agent registration reuses the same restriction', agent.id === 'chat-3');
 }
 
-// --- a server that connects later is caught by tools/change ----------------
+// --- the photo switch gates read_image ------------------------------------
 {
 	const dev = fakeHost();
 	dev.addSession('chat-4');
@@ -299,20 +300,58 @@ const storePath = path.join(dir, 'session-gate.json');
 	await apply(dev.ctx, { storePath });
 	dev.seal();
 
-	await call(dev, 'POST', {}, { sessionId: 'chat-4', mcpOff: ['svelte'] });
+	ok('read_image is hidden by default', dev.restrictions.at(-1).deny.includes('read_image'));
+	let state = await call(dev, 'POST', {}, { sessionId: 'chat-4', photos: true });
+	ok('photos on answers the state', state.status === 200);
+	ok('photos on is reported', state.body?.photos?.allowed === true);
+	ok('photos on keeps read_image', !dev.restrictions.at(-1).deny.includes('read_image'));
+	ok('photos on hides no MCP tool', dev.restrictions.at(-1).deny.every((name) => name.startsWith('mcp__')));
+
+	// Omitted fields keep their stored value, so a stale client cannot reset a
+	// switch it did not touch.
+	state = await call(dev, 'POST', {}, { sessionId: 'chat-4', mcpOn: [] });
+	ok('omitting photos keeps them on', state.body?.photos?.allowed === true, JSON.stringify(state.body.photos));
+	state = await call(dev, 'POST', {}, { sessionId: 'chat-4', photos: false });
+	ok('photos off hides read_image again', dev.restrictions.at(-1).deny.includes('read_image'));
+}
+
+// --- a server that connects later stays off unless allowed ----------------
+{
+	const dev = fakeHost();
+	dev.addSession('chat-5');
+	dev.addAgent('chat-5');
+	await apply(dev.ctx, { storePath });
+	dev.seal();
+
+	await call(dev, 'POST', {}, { sessionId: 'chat-5', mcpOn: ['svelte'], photos: true });
 	const before = dev.restrictions.length;
 	dev.addTool('mcp__svelte__playground-link');
 	dev.emit('tools/change');
-	ok('a late tool of a switched-off server is hidden too',
-		dev.restrictions.length === before + 1
-			&& dev.restrictions.at(-1).deny.includes('mcp__svelte__playground-link'),
+	ok('a late tool of an allowed server stays visible',
+		!dev.restrictions.at(-1).deny.includes('mcp__svelte__playground-link'),
 		JSON.stringify(dev.restrictions.at(-1)));
+	ok('an allowed-server tool change installs nothing new', dev.restrictions.length === before);
 	dev.addTool('mcp__newserver__search');
 	dev.emit('tools/change');
-	ok('a late server is attached by default',
-		!dev.restrictions.at(-1).deny.includes('mcp__newserver__search'),
+	ok('a new server is off by default',
+		dev.restrictions.at(-1).deny.includes('mcp__newserver__search'),
 		JSON.stringify(dev.restrictions.at(-1)));
+	ok('the new server installs one restriction', dev.restrictions.length === before + 1);
+	dev.emit('tools/change');
 	ok('an unchanged state installs nothing new', dev.restrictions.length === before + 1);
+}
+
+// --- a pre-inclusion client's exclusion list still works -------------------
+{
+	const dev = fakeHost();
+	dev.addSession('chat-12');
+	await apply(dev.ctx, { storePath });
+	dev.seal();
+	const state = await call(dev, 'POST', {}, { sessionId: 'chat-12', mcpOff: ['solidcraft'], photos: true });
+	ok('an exclusion list from an old client is translated',
+		state.body?.servers?.find((server) => server.name === 'svelte')?.enabled === true
+			&& state.body?.servers?.find((server) => server.name === 'solidcraft')?.enabled === false,
+		JSON.stringify(state.body?.servers));
 }
 
 // --- model capability ------------------------------------------------------
@@ -351,10 +390,10 @@ const storePath = path.join(dir, 'session-gate.json');
 
 	ok('GET without a session id is a 400', (await call(dev, 'GET')).status === 400);
 	ok('POST for an unknown chat is a 404', (await call(dev, 'POST', {}, { sessionId: 'ghost' })).status === 404);
-	const badList = await call(dev, 'POST', {}, { sessionId: 'chat-8', mcpOff: 'svelte' });
-	ok('a non-array mcpOff is a 400', badList.status === 400);
-	ok('the offending field is named', badList.body?.field === 'mcpOff', JSON.stringify(badList.body));
-	ok('a bad server name is a 400', (await call(dev, 'POST', {}, { sessionId: 'chat-8', mcpOff: ['not a name!'] })).status === 400);
+	const badList = await call(dev, 'POST', {}, { sessionId: 'chat-8', mcpOn: 'svelte' });
+	ok('a non-array mcpOn is a 400', badList.status === 400);
+	ok('the offending field is named', badList.body?.field === 'mcpOn', JSON.stringify(badList.body));
+	ok('a bad server name is a 400', (await call(dev, 'POST', {}, { sessionId: 'chat-8', mcpOn: ['not a name!'] })).status === 400);
 	ok('a non-boolean photos is a 400', (await call(dev, 'POST', {}, { sessionId: 'chat-8', photos: 'yes' })).status === 400);
 	ok('an unsupported method is a 405', (await call(dev, 'DELETE', { sessionId: 'chat-8' })).status === 405);
 }
@@ -365,16 +404,17 @@ const storePath = path.join(dir, 'session-gate.json');
 	dev.addSession('chat-9');
 	await apply(dev.ctx, { storePath: `${storePath}.restart` });
 	dev.seal();
-	await call(dev, 'POST', {}, { sessionId: 'chat-9', mcpOff: ['solidcraft'], photos: false });
+	await call(dev, 'POST', {}, { sessionId: 'chat-9', mcpOn: ['svelte'], photos: true });
 
 	const again = fakeHost();
 	again.addSession('chat-9');
 	await apply(again.ctx, { storePath: `${storePath}.restart` });
 	again.seal();
 	const state = await call(again, 'GET', { sessionId: 'chat-9' });
-	ok('the choice survives a restart', state.body?.servers?.find((server) => server.name === 'solidcraft')?.enabled === false
-		&& state.body.photos.allowed === false, JSON.stringify(state.body));
-	ok('a restarted chat hides the stored servers', state.body.servers.filter((server) => server.enabled === false).length === 1);
+	ok('the choice survives a restart', state.body?.servers?.find((server) => server.name === 'svelte')?.enabled === true
+		&& state.body?.servers?.find((server) => server.name === 'solidcraft')?.enabled === false
+		&& state.body.photos.allowed === true, JSON.stringify(state.body));
+	ok('a restarted chat allows exactly the stored server', state.body.servers.filter((server) => server.enabled === true).length === 1);
 }
 
 // --- teardown lifts restrictions without re-installing them ---------------
@@ -384,12 +424,13 @@ const storePath = path.join(dir, 'session-gate.json');
 	dev.addAgent('chat-11');
 	await apply(dev.ctx, { storePath });
 	dev.seal();
-	await call(dev, 'POST', {}, { sessionId: 'chat-11', mcpOff: ['svelte'] });
+	await call(dev, 'POST', {}, { sessionId: 'chat-11', mcpOn: ['svelte'] });
 	const installedCount = dev.restrictions.length;
+	const liftedBefore = dev.lifted.length;
 	const cleanup = dev.effects.find((effect) => effect.label === 'session-gate: tool restrictions')?.cleanup;
 	ok('the teardown effect is registered', typeof cleanup === 'function');
 	cleanup?.();
-	ok('teardown lifts the restriction', dev.lifted.length === 1, JSON.stringify(dev.lifted));
+	ok('teardown lifts the restriction', dev.lifted.length === liftedBefore + 1, JSON.stringify(dev.lifted));
 	ok('teardown does not re-install a restriction', dev.restrictions.length === installedCount, JSON.stringify(dev.restrictions));
 	dev.addTool('mcp__svelte__late');
 	dev.emit('tools/change');
@@ -412,10 +453,10 @@ const storePath = path.join(dir, 'session-gate.json');
 {
 	const file = path.join(dir, 'corrupt.json');
 	await writeFile(file, JSON.stringify({
-		version: 1,
+		version: 2,
 		selections: {
-			'chat-bad': { mcpOff: 'nope', photos: true },
-			'chat-good': { mcpOff: [], photos: false }
+			'chat-bad': { mcpOn: 'nope', photos: true },
+			'chat-good': { mcpOn: ['svelte'], photos: true }
 		}
 	}));
 	const dev = fakeHost();
@@ -423,7 +464,39 @@ const storePath = path.join(dir, 'session-gate.json');
 	await apply(dev.ctx, { storePath: file });
 	dev.seal();
 	const state = await call(dev, 'GET', { sessionId: 'chat-good' });
-	ok('a corrupt row is skipped, the good one survives', state.body?.photos?.allowed === false, JSON.stringify(state.body));
+	ok('a corrupt row is skipped, the good one survives',
+		state.body?.servers?.find((server) => server.name === 'svelte')?.enabled === true
+			&& state.body.photos.allowed === true, JSON.stringify(state.body));
+	const skipped = await call(dev, 'GET', { sessionId: 'chat-bad' });
+	ok('the skipped row falls back to the default',
+		skipped.status === 200 && skipped.body?.photos?.allowed === false, JSON.stringify(skipped));
+}
+
+// --- a v1 record migrates to the new "off by default" model ---------------
+{
+	const file = path.join(dir, 'legacy.json');
+	await writeFile(file, JSON.stringify({
+		version: 1,
+		selections: {
+			'chat-legacy': { mcpOff: ['svelte'], photos: true }
+		}
+	}));
+	const dev = fakeHost();
+	dev.addSession('chat-legacy');
+	dev.addAgent('chat-legacy');
+	await apply(dev.ctx, { storePath: file });
+	dev.seal();
+	const state = await call(dev, 'GET', { sessionId: 'chat-legacy' });
+	ok('a v1 record starts from the new defaults',
+		state.body?.photos?.allowed === false && state.body.servers.every((server) => server.enabled === false),
+		JSON.stringify(state.body));
+	ok('a v1 record hides every MCP tool', dev.restrictions.at(-1).deny.filter((name) => name.startsWith('mcp__')).length === 3);
+	ok('a v1 record hides read_image', dev.restrictions.at(-1).deny.includes('read_image'));
+	await call(dev, 'POST', {}, { sessionId: 'chat-legacy', mcpOn: ['svelte'] });
+	const stored = JSON.parse(await readFile(file, 'utf8'));
+	ok('the store file is rewritten as v2 after a save',
+		stored.version === 2 && Array.isArray(stored.selections['chat-legacy'].mcpOn),
+		JSON.stringify(stored).slice(0, 200));
 }
 
 await rm(dir, { recursive: true, force: true });

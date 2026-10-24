@@ -125,6 +125,7 @@ ok('the control sorts just after the workspace-write group', control?.options.or
 ok('the control is a component', typeof control?.component === 'function');
 ok('the control is localized through its own namespace', control?.options.locale === 'sessionGate', control?.options.locale);
 ok('the control state comes from the host route', source.includes('/api/session-gate/state'));
+ok('the dialog saves an inclusion list', source.includes('{ sessionId, mcpOn, photos }') && !source.includes('mcpOff'));
 ok('no lookalike dialog is hand-rolled', source.includes('el(primitives.Modal') && !source.includes('createPortal'));
 ok('the dialog uses the shipped switch', source.includes('el(primitives.Switch'));
 ok('the dialog uses the shipped button', source.includes('el(primitives.Button'));
