@@ -59,11 +59,29 @@ window.__ModuleLoader__.load({
 			"mcp.empty": "No MCP servers are connected in this deployment.",
 			"mcp.hint": "Checked servers are available to the model in this chat; everything starts unchecked.",
 			"mcp.tools": "{count} tool(s)",
+			"tools.title": "Tools",
+			"tools.hint": "Checked groups are available to the model in this chat. read_image has its own switch below.",
+			"group.files": "Files and code",
+			"group.plan": "Planning",
+			"group.agents": "Subagents",
+			"group.jobs": "Background jobs",
+			"group.flow": "Orchestration",
+			"group.cron": "Schedules (cron)",
+			"group.mesh": "Moleculer mesh",
+			"group.rooms": "Team rooms",
+			"group.board": "Whiteboard",
+			"group.web": "Web",
+			"group.misc": "Misc",
+			"group.other": "Other tools",
 			"photos.title": "The model may read images",
 			"photos.hint": "Allows the read_image tool: PNG, JPEG, WebP and GIF files. Off by default.",
 			"photos.capable": "Model {model} accepts image input.",
 			"photos.incapable": "Model {model} does not accept image input, so photos cannot be read in this chat.",
 			"photos.unknown": "Whether the model accepts images could not be determined.",
+			"cost.tokens": "~{tokens} t",
+			"cost.withPercent": "~{tokens} t · {percent}% ctx",
+			"cost.total": "Enabled now: ~{tokens} t · {percent}% of context",
+			"cost.totalNoContext": "Enabled now: ~{tokens} t",
 			"error.load": "Could not load the access state: {message}",
 			"error.save": "Could not save: {message}"
 		};
@@ -87,11 +105,29 @@ window.__ModuleLoader__.load({
 			"mcp.empty": "В этом профиле нет подключённых MCP-серверов.",
 			"mcp.hint": "Отмеченные серверы доступны модели в этом чате; по умолчанию не отмечено ничего.",
 			"mcp.tools": "инструментов: {count}",
+			"tools.title": "Инструменты",
+			"tools.hint": "Отмеченные группы доступны модели в этом чате. read_image управляется отдельным переключателем ниже.",
+			"group.files": "Файлы и код",
+			"group.plan": "Планирование",
+			"group.agents": "Субагенты",
+			"group.jobs": "Фоновые задачи",
+			"group.flow": "Оркестрация",
+			"group.cron": "Расписания (cron)",
+			"group.mesh": "Сеть Moleculer",
+			"group.rooms": "Комнаты",
+			"group.board": "Доска",
+			"group.web": "Веб",
+			"group.misc": "Прочее",
+			"group.other": "Другие инструменты",
 			"photos.title": "Агент может читать фотографии",
 			"photos.hint": "Разрешает инструмент read_image: файлы PNG, JPEG, WebP и GIF. По умолчанию выключено.",
 			"photos.capable": "Модель {model} принимает изображения.",
 			"photos.incapable": "Модель {model} не принимает изображения — прочитать фото в этом чате не получится.",
 			"photos.unknown": "Не удалось определить, принимает ли модель изображения.",
+			"cost.tokens": "≈{tokens} т",
+			"cost.withPercent": "≈{tokens} т · {percent}% контекста",
+			"cost.total": "Сейчас включено: ≈{tokens} т · {percent}% контекста",
+			"cost.totalNoContext": "Сейчас включено: ≈{tokens} т",
 			"error.load": "Не удалось загрузить состояние доступа: {message}",
 			"error.save": "Не удалось сохранить: {message}"
 		};
@@ -106,11 +142,29 @@ window.__ModuleLoader__.load({
 			"mcp.empty": "此部署中没有已连接的 MCP 服务器。",
 			"mcp.hint": "勾选的服务器在本会话中对模型可用；默认全部未勾选。",
 			"mcp.tools": "{count} 个工具",
+			"tools.title": "工具",
+			"tools.hint": "勾选的工具组在本会话中对模型可用。read_image 由下方独立开关控制。",
+			"group.files": "文件与代码",
+			"group.plan": "规划",
+			"group.agents": "子代理",
+			"group.jobs": "后台任务",
+			"group.flow": "编排",
+			"group.cron": "定时任务 (cron)",
+			"group.mesh": "Moleculer 网格",
+			"group.rooms": "团队房间",
+			"group.board": "白板",
+			"group.web": "网络",
+			"group.misc": "其他",
+			"group.other": "其他工具",
 			"photos.title": "模型可以读取图片",
 			"photos.hint": "启用 read_image 工具：PNG、JPEG、WebP 和 GIF 文件。默认关闭。",
 			"photos.capable": "模型 {model} 接受图片输入。",
 			"photos.incapable": "模型 {model} 不接受图片输入，因此本会话无法读取图片。",
 			"photos.unknown": "无法确定模型是否接受图片。",
+			"cost.tokens": "约 {tokens} 词元",
+			"cost.withPercent": "约 {tokens} 词元 · 占上下文 {percent}%",
+			"cost.total": "当前已启用：约 {tokens} 词元 · 占上下文 {percent}%",
+			"cost.totalNoContext": "当前已启用：约 {tokens} 词元",
 			"error.load": "无法加载访问状态：{message}",
 			"error.save": "无法保存：{message}"
 		};
@@ -123,6 +177,47 @@ window.__ModuleLoader__.load({
 			let out = template;
 			for (const [key, value] of Object.entries(values ?? {})) out = out.split(`{${key}}`).join(String(value));
 			return out;
+		}
+		/** Localized label for one tool group, falling back to its id. */
+		function groupLabel(t, id) {
+			const key = `group.${id}`;
+			const label = t(key);
+			return label === undefined || label === "" || label === key ? id : label;
+		}
+		/** Compact token count: 940, 3.4k, 12.1k. */
+		function compactTokens(value) {
+			if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "0";
+			return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(Math.round(value));
+		}
+		/** One decimal of a percentage, with a floor for "there is some cost". */
+		function percentText(value) {
+			if (typeof value !== "number" || !Number.isFinite(value)) return null;
+			if (value > 0 && value < 0.05) return "<0.1";
+			return value >= 10 ? value.toFixed(0) : value.toFixed(1);
+		}
+		/** The price of one row's schemas, or null when the Host could not price it. */
+		function costText(t, entry) {
+			if (entry === undefined || entry === null || typeof entry.tokens !== "number") return null;
+			const percent = percentText(entry.percent);
+			return percent === null
+				? fill(t("cost.tokens"), { tokens: compactTokens(entry.tokens) })
+				: fill(t("cost.withPercent"), { tokens: compactTokens(entry.tokens), percent });
+		}
+		/** Right-hand column of a row: tool count and its schema price. */
+		function rowMeta(t, entry) {
+			const price = costText(t, entry);
+			return el("span", {
+				style: {
+					marginLeft: "auto",
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "flex-end",
+					whiteSpace: "nowrap",
+					lineHeight: "15px"
+				}
+			},
+				el("span", { style: { fontSize: "11px", color: "var(--dsw-alias-label-tertiary, inherit)" } }, fill(t("mcp.tools"), { count: entry.tools })),
+				price === null ? null : el("span", { style: { fontSize: "10px", color: "var(--dsw-alias-label-caption, inherit)" } }, price));
 		}
 		/** One host call; throws the server's message on a non-2xx answer. */
 		async function callHost(method, url, body) {
@@ -181,9 +276,7 @@ window.__ModuleLoader__.load({
 						color: "var(--dsw-alias-label-primary, inherit)"
 					}
 				}, server.name),
-				el("span", {
-					style: { marginLeft: "auto", fontSize: "11px", color: "var(--dsw-alias-label-tertiary, inherit)", whiteSpace: "nowrap" }
-				}, fill(t("mcp.tools"), { count: server.tools })));
+				rowMeta(t, server));
 		}
 		/**
 		 * The access dialog: one checkbox per MCP server and one switch for image
@@ -191,7 +284,7 @@ window.__ModuleLoader__.load({
 		 * to forget; a failure reloads the Host state rather than leaving the
 		 * checkboxes lying about what the chat actually does.
 		 */
-		function AccessDialog({ open, t, state, busy, error, onClose, onToggleServer, onTogglePhotos }) {
+		function AccessDialog({ open, t, state, busy, error, onClose, onToggleServer, onToggleGroup, onTogglePhotos }) {
 			const servers = state?.servers ?? [];
 			const photos = state?.photos;
 			const capable = photos?.capable;
@@ -202,7 +295,7 @@ window.__ModuleLoader__.load({
 					: capable === false
 						? fill(t("photos.incapable"), { model: photos.model })
 						: t("photos.unknown");
-			const rows = servers.length === 0
+			const serverRows = servers.length === 0
 				? [hint(t("mcp.empty"))]
 				: servers.map((server) => el(ServerRow, {
 					key: server.name,
@@ -211,6 +304,27 @@ window.__ModuleLoader__.load({
 					t,
 					onToggle: onToggleServer
 				}));
+			const groups = state?.groups ?? [];
+			const rows = groups.map((group) => el("label", {
+				key: group.id,
+				title: Array.isArray(group.names) ? group.names.join(", ") : undefined,
+				style: {
+					display: "flex",
+					alignItems: "center",
+					gap: "8px",
+					padding: "5px 0",
+					cursor: busy ? "default" : "pointer"
+				}
+			},
+				el("input", {
+					type: "checkbox",
+					checked: group.enabled === true,
+					disabled: busy,
+					onChange: () => onToggleGroup(group.id),
+					style: { accentColor: "var(--dsw-alias-interactive-bg-primary, #3a6df0)", margin: 0 }
+				}),
+				el("span", { style: { fontSize: "13px", color: "var(--dsw-alias-label-primary, inherit)" } }, groupLabel(t, group.id)),
+				rowMeta(t, group)));
 			return el(primitives.Modal, {
 				open,
 				title: t("modal.title"),
@@ -218,22 +332,39 @@ window.__ModuleLoader__.load({
 				closeLabel: t("modal.close"),
 				onClose,
 				footer: el(primitives.Button, { variant: "primary", onClick: onClose }, t("modal.close")),
-				children: el("div", { style: { display: "flex", flexDirection: "column", gap: "16px" } },
+				children: el("div", { style: { display: "flex", flexDirection: "column", gap: "16px", maxHeight: "58vh", overflowY: "auto" } },
 					el("section", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
 						sectionHeading(t("mcp.title")),
-						...rows,
+						...serverRows,
 						hint(t("mcp.hint"))),
+					el("section", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+						sectionHeading(t("tools.title")),
+						...rows,
+						hint(t("tools.hint"))),
 					el("section", { style: { display: "flex", alignItems: "flex-start", gap: "12px" } },
 						el("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" } },
 							sectionHeading(t("photos.title")),
 							hint(t("photos.hint")),
-							photos === undefined ? null : hint(photoHint)),
+							photos === undefined ? null : hint(photoHint),
+							photos === undefined || costText(t, photos) === null ? null : hint(costText(t, photos))),
 						el(primitives.Switch, {
 							checked: photos?.allowed === true,
 							disabled: busy || photos === undefined,
 							label: t("photos.title"),
 							onChange: () => onTogglePhotos()
 						})),
+					state === null || state.cost === undefined
+						? null
+						: el("div", {
+							style: {
+								borderTop: "1px solid var(--dsw-alias-border-l2, #e1e3e5)",
+								paddingTop: "8px",
+								fontSize: "11.5px",
+								color: "var(--dsw-alias-label-secondary, inherit)"
+							}
+						}, percentText(state.cost.percent) === null
+							? fill(t("cost.totalNoContext"), { tokens: compactTokens(state.cost.tokens) })
+							: fill(t("cost.total"), { tokens: compactTokens(state.cost.tokens), percent: percentText(state.cost.percent) })),
 					error === null || error === undefined
 						? null
 						: el("div", {
@@ -272,11 +403,11 @@ window.__ModuleLoader__.load({
 			react.useEffect(() => {
 				if (open) void load();
 			}, [open, load]);
-			const persist = react.useCallback(async (mcpOn, photos) => {
+			const persist = react.useCallback(async (mcpOn, groupsOff, photos) => {
 				if (typeof sessionId !== "string" || sessionId === "") return;
 				setBusy(true);
 				try {
-					const payload = await callHost("POST", STATE_URL, { sessionId, mcpOn, photos });
+					const payload = await callHost("POST", STATE_URL, { sessionId, mcpOn, groupsOff, photos });
 					setState(payload);
 					setError(null);
 				} catch (failure) {
@@ -291,6 +422,9 @@ window.__ModuleLoader__.load({
 			const currentOn = state === null
 				? []
 				: state.servers.filter((server) => server.enabled === true).map((server) => server.name);
+			const currentOff = state === null
+				? []
+				: state.groups.filter((group) => group.enabled !== true).map((group) => group.id);
 			const toggleServer = async (name) => {
 				if (state === null) return;
 				const nextOn = currentOn.includes(name)
@@ -301,11 +435,23 @@ window.__ModuleLoader__.load({
 					...state,
 					servers: state.servers.map((server) => (server.name === name ? { ...server, enabled: server.enabled !== true } : server))
 				});
-				await persist(nextOn, state.photos?.allowed === true);
+				await persist(nextOn, currentOff, state.photos?.allowed === true);
+			};
+			const toggleGroup = async (id) => {
+				if (state === null) return;
+				const nextOff = currentOff.includes(id)
+					? currentOff.filter((entry) => entry !== id)
+					: [...currentOff, id];
+				// Show the tick at once; the save response reconciles it with the Host.
+				setState({
+					...state,
+					groups: state.groups.map((group) => (group.id === id ? { ...group, enabled: group.enabled !== true } : group))
+				});
+				await persist(currentOn, nextOff, state.photos?.allowed === true);
 			};
 			const togglePhotos = async () => {
 				if (state === null) return;
-				await persist(currentOn, state.photos?.allowed !== true);
+				await persist(currentOn, currentOff, state.photos?.allowed !== true);
 			};
 			const total = state === null ? 0 : state.servers.length;
 			const enabled = state === null ? 0 : state.servers.filter((server) => server.enabled === true).length;
@@ -334,6 +480,7 @@ window.__ModuleLoader__.load({
 					error,
 					onClose: () => setOpen(false),
 					onToggleServer: toggleServer,
+					onToggleGroup: toggleGroup,
 					onTogglePhotos: togglePhotos
 				}));
 		}

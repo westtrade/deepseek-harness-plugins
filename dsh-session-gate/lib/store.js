@@ -1,12 +1,13 @@
 /**
  * Durable per-chat access store for `dsh-session-gate`.
  *
- * One record per chat: which MCP servers the chat allows and whether the model
- * may read image files (`read_image`). Everything is OFF by default, so an
- * absent record means "nothing allowed": a chat that never opened the dialog
- * exposes no MCP tool and no image reading, and a server that connects after a
- * choice was made does not quietly appear in it. That is why the record is an
- * inclusion list rather than a list of exclusions.
+ * One record per chat: which MCP servers the chat allows, which built-in tool
+ * GROUPS it has switched off, and whether the model may read image files
+ * (`read_image`). MCP servers and image reading are OFF by default (explicit
+ * allow), while the built-in groups are ON by default and are switched off
+ * individually — so an absent record means "no MCP, no photos, the usual
+ * tools", and a server that connects after a choice was made does not quietly
+ * appear in a chat.
  *
  * The file is `$DSH_HOME/session-gate.json`, written through a temp file +
  * rename so a crash never leaves half a record.
@@ -23,13 +24,19 @@ import path from 'node:path';
 import os from 'node:os';
 
 /** Serialized store version; a future change bumps it and migrates on read. */
-export const STORE_VERSION = 2;
+export const STORE_VERSION = 3;
 
 /** Most chats the store keeps a record for. */
 export const MAX_SESSIONS = 5000;
 
 /** Most servers one chat may allow. */
 export const MAX_ON = 64;
+
+/** Most tool groups one chat may switch off. */
+export const MAX_GROUPS_OFF = 32;
+
+/** Tool-group ids are short slugs; the taxonomy itself lives in the host half. */
+const GROUP_ID = /^[a-z][a-z0-9_-]{0,31}$/;
 
 /**
  * MCP server names are the `serverName` values of `dsh-mcp-client` rows: the
@@ -77,6 +84,20 @@ function normalizeOn(value) {
 	return [...on].sort();
 }
 
+/** Normalize the list of switched-off tool groups. */
+function normalizeGroupsOff(value) {
+	if (!Array.isArray(value)) throw new GateInputError('groupsOff must be an array of tool-group ids', 'groupsOff');
+	const off = new Set();
+	for (const entry of value) {
+		if (typeof entry !== 'string') throw new GateInputError('groupsOff must hold tool-group ids', 'groupsOff');
+		const id = entry.trim();
+		if (!GROUP_ID.test(id)) throw new GateInputError(`"${id}" is not a tool-group id`, 'groupsOff');
+		off.add(id);
+	}
+	if (off.size > MAX_GROUPS_OFF) throw new GateInputError(`a chat switches off at most ${String(MAX_GROUPS_OFF)} tool groups`, 'groupsOff');
+	return [...off].sort();
+}
+
 /**
  * Normalize one record, filling omitted fields from the existing row so a
  * partial save cannot silently flip the other switch.
@@ -91,16 +112,19 @@ export function normalizeSelection(body, existing) {
 		throw new GateInputError('the request body must be a JSON object');
 	}
 	const mcpOn = body.mcpOn === undefined && existing !== undefined ? existing.mcpOn : normalizeOn(body.mcpOn ?? []);
+	const groupsOff = body.groupsOff === undefined && existing !== undefined ? existing.groupsOff : normalizeGroupsOff(body.groupsOff ?? []);
 	const photos = body.photos === undefined ? (existing === undefined ? false : existing.photos) : body.photos;
 	if (typeof photos !== 'boolean') throw new GateInputError('photos must be a boolean', 'photos');
-	return { mcpOn: [...mcpOn], photos };
+	return { mcpOn: [...mcpOn], groupsOff: [...groupsOff], photos };
 }
 
 /** Whether two records say the same thing. */
 function sameSelection(left, right) {
 	return left.photos === right.photos
 		&& left.mcpOn.length === right.mcpOn.length
-		&& left.mcpOn.every((name, index) => name === right.mcpOn[index]);
+		&& left.mcpOn.every((name, index) => name === right.mcpOn[index])
+		&& left.groupsOff.length === right.groupsOff.length
+		&& left.groupsOff.every((id, index) => id === right.groupsOff[index]);
 }
 
 /**
@@ -114,7 +138,7 @@ function sameSelection(left, right) {
  */
 export async function openGateStore(options = {}) {
 	const file = options.file ?? defaultStorePath(options.home);
-	/** @type {Map<string, { mcpOn: string[], photos: boolean }>} */
+	/** @type {Map<string, { mcpOn: string[], groupsOff: string[], photos: boolean }>} */
 	const selections = new Map();
 	let writeChain = Promise.resolve();
 
@@ -122,7 +146,7 @@ export async function openGateStore(options = {}) {
 	async function readDisk() {
 		try {
 			const parsed = JSON.parse(await readFile(file, 'utf8'));
-			/** @type {Map<string, { mcpOn: string[], photos: boolean }>} */
+			/** @type {Map<string, { mcpOn: string[], groupsOff: string[], photos: boolean }>} */
 			const rows = new Map();
 			for (const [sessionId, raw] of Object.entries(parsed?.selections ?? {})) {
 				if (typeof sessionId !== 'string' || sessionId === '') continue;
@@ -134,7 +158,7 @@ export async function openGateStore(options = {}) {
 					// (nothing allowed) rather than guessed back. A row with neither
 					// shape is corrupt and dropped, so the chat keeps the default.
 					const legacy = raw !== null && typeof raw === 'object' && !Array.isArray(raw.mcpOn) && Array.isArray(raw.mcpOff);
-					rows.set(sessionId, legacy ? { mcpOn: [], photos: false } : normalizeSelection(raw, undefined));
+					rows.set(sessionId, legacy ? { mcpOn: [], groupsOff: [], photos: false } : normalizeSelection(raw, undefined));
 				} catch {
 					// One unusable row must not cost every other chat its settings.
 				}
@@ -176,7 +200,7 @@ export async function openGateStore(options = {}) {
 		get(sessionId) {
 			if (typeof sessionId !== 'string' || sessionId === '') return undefined;
 			const row = selections.get(sessionId);
-			return row === undefined ? undefined : { mcpOn: [...row.mcpOn], photos: row.photos };
+			return row === undefined ? undefined : { mcpOn: [...row.mcpOn], groupsOff: [...row.groupsOff], photos: row.photos };
 		},
 		/**
 		 * Record one chat's access choices.

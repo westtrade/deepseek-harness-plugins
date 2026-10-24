@@ -33,6 +33,14 @@ function fakeAgent(id, dev) {
 		session,
 		ctx: {
 			tools: {
+				guard(guard) {
+					const entry = { sessionId: id, guard };
+					dev.guards.push(entry);
+					return () => {
+						const at = dev.guards.indexOf(entry);
+						if (at >= 0) dev.guards.splice(at, 1);
+					};
+				},
 				restrict(filter) {
 					const deny = [...(filter.deny ?? [])].sort();
 					dev.restrictions.push({ sessionId: id, deny });
@@ -71,22 +79,36 @@ function fakeHost(options = {}) {
 		'read_image',
 		'bash',
 		'read',
+		'todo_write',
+		'mesh_node_health',
+		'web_search',
+		'zz_custom_tool',
 		'mcp__svelte__get-documentation',
 		'mcp__svelte__list-sections',
 		'mcp__solidcraft__execute'
 	])];
-	const capability = options.capability ?? (() => ({ inputModalities: ['text', 'image'] }));
+	const capability = options.capability ?? (() => ({
+		inputModalities: ['text', 'image'],
+		context: { contextWindow: 100_000 }
+	}));
+	/** Tools the agent preset registers in the agent's OWN layer: known, not maskable. */
+	const ownLayer = [...(options.ownLayer ?? ['subagent', 'list_subagent_models'])];
+	const guards = [];
 	const selections = new Map();
 	let sealed = false;
 
 	const tools = {
 		names,
+		guards,
 		view(scope) {
-			if (scope === undefined) return { restrictableNames: new Set(names) };
-			return { restrictableNames: new Set(names) };
+			const own = new Set(ownLayer);
+			return {
+				knownNames: new Set(names),
+				restrictableNames: new Set(names.filter((name) => !own.has(name)))
+			};
 		},
 		schemas() {
-			return names.map((name) => ({ name }));
+			return names.map((name) => ({ name, description: `the ${name} tool`, parameters: { type: 'object', properties: {} } }));
 		}
 	};
 	const llm = {
@@ -116,7 +138,16 @@ function fakeHost(options = {}) {
 		agents,
 		selections,
 		tools,
+		guards,
 		headers,
+		guardReason(agent, name) {
+			for (const entry of guards) {
+				if (entry.sessionId !== agent.id) continue;
+				const reason = entry.guard({ name, agent, arguments: {} });
+				if (reason !== undefined) return reason;
+			}
+			return undefined;
+		},
 		headerOf: (id) => headers.get(id),
 		emit(event, payload) {
 			for (const listener of listeners.get(event) ?? []) listener(payload);
@@ -181,6 +212,16 @@ function fakeHost(options = {}) {
 	return dev;
 }
 
+/**
+ * The same fixed-density price the host uses, so totals can be asserted exactly:
+ * one array of wire schemas, four characters per token, one framing block.
+ */
+function priceOfNamed(toolNames, catalog) {
+	const picked = toolNames.map((name) => catalog.get(name));
+	const chars = JSON.stringify(picked).length;
+	return Math.ceil(chars / 4) + 4;
+}
+
 /** One fake request: method, URL, optional JSON body. */
 function fakeRequest(method, url, body) {
 	const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body))];
@@ -226,6 +267,11 @@ const storePath = path.join(dir, 'session-gate.json');
 	dev.addSession('chat-1');
 	await apply(dev.ctx, { storePath });
 	dev.seal();
+	const catalog = new Map(dev.tools.names.map((name) => [name, {
+		name,
+		description: `the ${name} tool`,
+		parameters: { type: 'object', properties: {} }
+	}]));
 
 	ok('the state route is registered exactly', dev.routes.has(`exact:${STATE_PATH}`), [...dev.routes.keys()].join(', '));
 	ok('the optional services are captured through inject', dev.injections.join(',') === 'tools,llm,sessionProjections,agentDefaultModel', dev.injections.join(','));
@@ -240,6 +286,26 @@ const storePath = path.join(dir, 'session-gate.json');
 		JSON.stringify(state.body?.servers));
 	ok('every server is off by default', state.body.servers.every((server) => server.enabled === false));
 	ok('reading images is off by default', state.body.photos.allowed === false);
+	ok('built-in tool groups are on by default', state.body.groups.every((group) => group.enabled === true), JSON.stringify(state.body.groups));
+	ok('the groups follow the tool taxonomy',
+		JSON.stringify(state.body.groups.map((group) => group.id)) === JSON.stringify(['files', 'plan', 'mesh', 'web', 'other']),
+		JSON.stringify(state.body.groups.map((group) => group.id)));
+	ok('a tool no rule knows lands in other',
+		state.body.groups.find((group) => group.id === 'other').names.includes('zz_custom_tool'),
+		JSON.stringify(state.body.groups.find((group) => group.id === 'other')));
+	ok('read_image is not in any group',
+		state.body.groups.every((group) => !group.names.includes('read_image')) && state.body.photos.tokens > 0);
+	ok('every row is priced', state.body.servers.every((server) => server.tokens > 0)
+		&& state.body.groups.every((group) => group.tokens > 0), JSON.stringify(state.body.groups));
+	ok('the price is a share of the context window',
+		state.body.cost.percent > 0 && Math.abs(state.body.cost.percent - (state.body.cost.tokens / 100_000) * 100) < 1e-9,
+		JSON.stringify(state.body.cost));
+	ok('the total prices exactly what is enabled: groups only, no MCP and no photos',
+		state.body.cost.tokens === priceOfNamed(
+			['bash', 'read', 'todo_write', 'mesh_node_health', 'web_search', 'zz_custom_tool'],
+			catalog
+		),
+		JSON.stringify(state.body.cost));
 	ok('the default model is resolved into the capability line',
 		state.body.photos.capable === true && state.body.photos.model === 'default-model',
 		JSON.stringify(state.body.photos));
@@ -352,6 +418,91 @@ const storePath = path.join(dir, 'session-gate.json');
 		state.body?.servers?.find((server) => server.name === 'svelte')?.enabled === true
 			&& state.body?.servers?.find((server) => server.name === 'solidcraft')?.enabled === false,
 		JSON.stringify(state.body?.servers));
+}
+
+// --- a switched-off group hides its tools --------------------------------
+{
+	const dev = fakeHost();
+	dev.addSession('chat-13');
+	dev.addAgent('chat-13');
+	await apply(dev.ctx, { storePath });
+	dev.seal();
+
+	const before = (await call(dev, 'GET', { sessionId: 'chat-13' })).body;
+	const catalog = new Map(dev.tools.names.map((name) => [name, {
+		name,
+		description: `the ${name} tool`,
+		parameters: { type: 'object', properties: {} }
+	}]));
+	let state = await call(dev, 'POST', {}, { sessionId: 'chat-13', groupsOff: ['mesh'] });
+	ok('switching a group off answers the state', state.status === 200, String(state.status));
+	ok('the group reads as off', state.body?.groups?.find((group) => group.id === 'mesh')?.enabled === false);
+	ok('its tools are hidden', dev.restrictions.at(-1).deny.includes('mesh_node_health'), JSON.stringify(dev.restrictions.at(-1)));
+	ok('elsewhere the chat still works', !dev.restrictions.at(-1).deny.includes('bash'));
+	ok('the total no longer pays for the switched-off group',
+		state.body.cost.tokens === priceOfNamed(
+			['bash', 'read', 'todo_write', 'web_search', 'zz_custom_tool'],
+			catalog
+		) && state.body.cost.tokens < before.cost.tokens,
+		JSON.stringify(state.body.cost));
+
+	state = await call(dev, 'POST', {}, { sessionId: 'chat-13', groupsOff: ['files'], photos: true });
+	ok('switching files off hides bash and read, but not read_image',
+		dev.restrictions.at(-1).deny.includes('bash')
+			&& dev.restrictions.at(-1).deny.includes('read')
+			&& !dev.restrictions.at(-1).deny.includes('read_image'),
+		JSON.stringify(dev.restrictions.at(-1)));
+	ok('read_image is priced on its own switch', state.body?.photos?.tokens > 0);
+
+	state = await call(dev, 'POST', {}, { sessionId: 'chat-13', groupsOff: [] });
+	ok('clearing the group list installs nothing extra', !dev.restrictions.at(-1).deny.includes('bash'));
+	ok('an unknown group id is a 400', (await call(dev, 'POST', {}, { sessionId: 'chat-13', groupsOff: ['NOPE!'] })).status === 400);
+}
+
+// --- a route without a context window still shows tokens -----------------
+{
+	const dev = fakeHost({ capability: () => ({ inputModalities: ['text', 'image'] }) });
+	dev.addSession('chat-14');
+	await apply(dev.ctx, { storePath });
+	dev.seal();
+	const state = await call(dev, 'GET', { sessionId: 'chat-14' });
+	ok('without a context window the price has no percentage',
+		state.body?.cost?.tokens > 0 && state.body.cost.percent === null, JSON.stringify(state.body?.cost));
+	ok('the capability is still reported', state.body?.photos?.capable === true);
+}
+
+// --- a tool a restriction cannot mask is still governed ---------------
+{
+	const dev = fakeHost({
+		toolNames: ['subagent', 'list_subagent_models', 'bash', 'read_image', 'mcp__svelte__get-documentation'],
+		ownLayer: ['subagent', 'list_subagent_models']
+	});
+	dev.addSession('chat-15');
+	const agent = dev.addAgent('chat-15');
+	await apply(dev.ctx, { storePath });
+	dev.seal();
+
+	const state = await call(dev, 'GET', { sessionId: 'chat-15' });
+	ok('the unmaskable tool still appears in the catalogue',
+		state.body?.groups?.find((group) => group.id === 'agents')?.names?.includes('subagent'),
+		JSON.stringify(state.body?.groups));
+	ok('a guard is installed for the live agent', dev.guards.length === 1, String(dev.guards.length));
+
+	await call(dev, 'POST', {}, { sessionId: 'chat-15', groupsOff: ['agents'], photos: true });
+	ok('the restriction cannot hide the own-layer tool',
+		!dev.restrictions.at(-1).deny.includes('subagent'), JSON.stringify(dev.restrictions.at(-1)));
+	ok('the guard refuses the own-layer tool',
+		typeof dev.guardReason(agent, 'subagent') === 'string' && dev.guardReason(agent, 'subagent').includes('agents'),
+		String(dev.guardReason(agent, 'subagent')));
+	ok('the guard allows what is still on', dev.guardReason(agent, 'bash') === undefined, String(dev.guardReason(agent, 'bash')));
+
+	await call(dev, 'POST', {}, { sessionId: 'chat-15', groupsOff: [], mcpOn: [] });
+	ok('the guard refuses a switched-off MCP server', typeof dev.guardReason(agent, 'mcp__svelte__get-documentation') === 'string');
+	ok('the guard still allows the own-layer tool again', dev.guardReason(agent, 'subagent') === undefined);
+
+	const cleanup = dev.effects.find((effect) => effect.label === 'session-gate: tool restrictions')?.cleanup;
+	cleanup?.();
+	ok('teardown releases the call guard', dev.guards.length === 0, String(dev.guards.length));
 }
 
 // --- model capability ------------------------------------------------------
@@ -494,8 +645,9 @@ const storePath = path.join(dir, 'session-gate.json');
 	ok('a v1 record hides read_image', dev.restrictions.at(-1).deny.includes('read_image'));
 	await call(dev, 'POST', {}, { sessionId: 'chat-legacy', mcpOn: ['svelte'] });
 	const stored = JSON.parse(await readFile(file, 'utf8'));
-	ok('the store file is rewritten as v2 after a save',
-		stored.version === 2 && Array.isArray(stored.selections['chat-legacy'].mcpOn),
+	ok('the store file is rewritten at the current version after a save',
+		stored.version === 3 && Array.isArray(stored.selections['chat-legacy'].mcpOn)
+			&& Array.isArray(stored.selections['chat-legacy'].groupsOff),
 		JSON.stringify(stored).slice(0, 200));
 }
 
