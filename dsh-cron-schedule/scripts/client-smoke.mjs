@@ -454,7 +454,7 @@ Object.assign(reactStub, {
 /** Canned Host answers, so the panel can mount without a server. */
 const cannedJobs = [
 	{ id: 'job-plain', name: 'Plain timer', expression: '0 9 * * *', description: 'daily', timeZone: 'UTC', workspacePath: '/tmp/p', prompt: 'p', enabled: true, gate: null, missed: [], alwaysNewChat: false },
-	{ id: 'job-gated', name: 'Gated bot', expression: '*/30 * * * *', description: 'every 30 min', timeZone: 'UTC', workspacePath: '/tmp/p', prompt: 'p', enabled: true, gate: { file: 'TODO.md', heading: 'Incoming' }, missed: [], alwaysNewChat: false, lastStatus: 'skipped', lastNote: 'no open tasks under "## Incoming"' }
+	{ id: 'job-gated', name: 'Gated bot', expression: '*/30 * * * *', description: 'every 30 min', timeZone: 'UTC', workspacePath: '/tmp/p', prompt: 'p', enabled: true, gate: { file: 'TODO.md', heading: 'Incoming' }, missed: [], alwaysNewChat: false, lastStatus: 'skipped', lastNote: 'no open tasks under "## Incoming"', sessionId: 'job-gated-chat-archived' }
 ];
 globalThis.fetch = async (url) => {
 	const text = String(url);
@@ -519,7 +519,10 @@ const treeText = (node) => {
 	return parts.join('\n');
 };
 const propBag = {
-	useWorkspaces: () => [],
+	useWorkspaces: (selector) => {
+		const snapshot = { items: [], archivedSessionIds: ['job-gated-chat-archived'], state: 'ready', phase: 'ready', error: null };
+		return selector === undefined ? snapshot : selector(snapshot);
+	},
 	t: (key, values) => (values === undefined ? key : `${key} ${JSON.stringify(values)}`),
 	pickDirectory: async () => '/tmp/picked',
 	openChat: async () => true
@@ -539,6 +542,9 @@ ok('a gated row is marked as gated', panelText.includes('column.gateOn'));
 ok('an ungated row is marked as always running', panelText.includes('column.gateOff'));
 // A skipped run must read as a skip with its reason, not as a failure.
 ok('a skipped row explains itself', panelText.includes('job.skipped'), panelText.slice(-400));
+// Archiving hides a chat but leaves it addressable: the table must warn that
+// the bound chat is invisible, or a successful run looks like a no-op.
+ok('a job bound to an archived chat says so', panelText.includes('column.chatArchived'), panelText.slice(0, 400));
 
 // The add form is an element in that tree; render it to inspect its fields.
 let formElement;

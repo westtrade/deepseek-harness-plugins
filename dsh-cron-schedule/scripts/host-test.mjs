@@ -973,6 +973,61 @@ try {
 	ok('the manifest documents the gate', typeof gatedManifest.body.job.gate === 'string' && gatedManifest.body.job.gate.includes('Incoming'), JSON.stringify(gatedManifest.body.job.gate));
 	ok('the manifest lists the board route', gatedManifest.body.endpoints.some((entry) => entry.path.includes('/board')));
 
+	// --- a bound chat that went to the archive must not swallow the run ---
+	// Archiving only hides a chat; it keeps accepting messages. So a job bound to
+	// one "succeeds" into a conversation nobody can see — which reads as "the
+	// button does nothing". A run must start a fresh chat and rebind it.
+	const archivedBefore = host.created.length;
+	const archivedJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'В архивный чат', expression: '*/30 * * * *', workspacePath: path.join(dir, 'proj'), prompt: 'работай',
+		sessionId: 'session-beta'
+	}, { trusted: true });
+	ok('a job can be bound to a chat that is already archived', archivedJob.status === 201 && archivedJob.body.job.sessionId === 'session-beta', JSON.stringify(archivedJob.body.job?.sessionId));
+	const archivedRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(archivedJob.body.job.id)}/run`);
+	ok('an archived chat starts a new chat instead', host.created.length === archivedBefore + 1, `created=${host.created.length - archivedBefore}`);
+	ok('the archived chat got no message', !host.prompts.some((entry) => entry.sessionId === 'session-beta'), JSON.stringify(host.prompts.filter((entry) => entry.sessionId === 'session-beta')));
+	ok('the run succeeded rather than failing', archivedRun.body.job.lastStatus === 'succeeded', String(archivedRun.body.job.lastStatus));
+	const archiveRebound = archivedRun.body.job.sessionId;
+	ok('the job rebound to the new chat', typeof archiveRebound === 'string' && archiveRebound.startsWith('session-cron-') && archiveRebound !== 'session-beta', String(archiveRebound));
+	ok('the new chat is the one the run reports', archivedRun.body.job.lastSessionId === archiveRebound, JSON.stringify({ session: archiveRebound, last: archivedRun.body.job.lastSessionId }));
+	ok('the archived chat is mentioned in the log', host.logs.some(([level, text]) => level === 'info' && text.includes('archived')), 'no archive log');
+	// The next run continues the new chat, not the archived one.
+	const promptsBeforeContinue = host.prompts.length;
+	const chatsBeforeContinue = host.created.length;
+	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(archivedJob.body.job.id)}/run`);
+	ok('the following run reuses the new chat', host.created.length === chatsBeforeContinue && host.prompts.length === promptsBeforeContinue + 1, JSON.stringify({ created: host.created.length - chatsBeforeContinue, prompts: host.prompts.length - promptsBeforeContinue }));
+	ok('and it posts into that chat, not the archived one', host.prompts.at(-1).sessionId === archiveRebound, String(host.prompts.at(-1).sessionId));
+	// A chat archived *after* the check but before delivery has the same outcome:
+	// the delivery reports the chat is gone and the run falls back to a new one.
+	const vanished = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Исчезнувший чат', expression: '*/30 * * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		sessionId: 'session-fork'
+	}, { trusted: true });
+	const promptsBeforeVanished = host.prompts.length;
+	const chatsBeforeVanished = host.created.length;
+	host.ctx.sessionController.prompt = async () => {
+		const error = new Error('session "session-fork" not found');
+		error.code = 'session/not-found';
+		throw error;
+	};
+	const vanishedRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(vanished.body.job.id)}/run`);
+	ok('a chat deleted mid-way falls back to a new chat', vanishedRun.body.job.lastStatus === 'succeeded' && host.created.length === chatsBeforeVanished + 1, JSON.stringify({ status: vanishedRun.body.job.lastStatus, created: host.created.length - chatsBeforeVanished }));
+	ok('the fallback rebinds that new chat', typeof vanishedRun.body.job.sessionId === 'string' && vanishedRun.body.job.sessionId.startsWith('session-cron-'), String(vanishedRun.body.job.sessionId));
+	// Any other delivery failure is the run's own: it must be reported, not
+	// papered over with a fresh chat.
+	const brokenJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Сломанная доставка', expression: '*/30 * * * *', workspacePath: path.join(dir, 'proj'), prompt: 'p',
+		sessionId: 'session-alpha'
+	}, { trusted: true });
+	const chatsBeforeBroken = host.created.length;
+	host.ctx.sessionController.prompt = async () => {
+		throw new Error('rate limit exceeded');
+	};
+	const brokenRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(brokenJob.body.job.id)}/run`);
+	ok('an unrelated delivery failure is reported as a failure', brokenRun.body.job.lastStatus === 'failed' && /rate limit/.test(brokenRun.body.job.lastError), JSON.stringify({ status: brokenRun.body.job.lastStatus, error: brokenRun.body.job.lastError }));
+	ok('an unrelated failure starts no stray chat', host.created.length === chatsBeforeBroken, `created=${host.created.length - chatsBeforeBroken}`);
+	ok('an unrelated failure keeps the binding', brokenRun.body.job.sessionId === 'session-alpha', String(brokenRun.body.job.sessionId));
+
 	// --- toggle enabled off, then on ---
 	const off = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`, { enabled: false });
 	ok('toggle off 200', off.status === 200, JSON.stringify(off.body).slice(0, 160));

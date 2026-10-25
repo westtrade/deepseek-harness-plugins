@@ -84,6 +84,7 @@ window.__ModuleLoader__.load({
 			"column.chat": "Chat",
 			"column.chatNew": "new each run",
 			"column.chatUnbound": "not yet created",
+			"column.chatArchived": "archived — the next run starts a new chat",
 			"form.model": "Model",
 			"form.modelDefault": "Default",
 			"column.modelInherited": "last used",
@@ -213,6 +214,7 @@ window.__ModuleLoader__.load({
 			"column.chat": "Чат",
 			"column.chatNew": "новый каждый раз",
 			"column.chatUnbound": "ещё не создан",
+			"column.chatArchived": "в архиве — следующий запуск создаст новый чат",
 			"form.model": "Модель",
 			"form.modelDefault": "По умолчанию",
 			"column.modelInherited": "последняя использованная",
@@ -334,6 +336,7 @@ window.__ModuleLoader__.load({
 			"column.chat": "会话",
 			"column.chatNew": "每次新建",
 			"column.chatUnbound": "尚未创建",
+			"column.chatArchived": "已归档——下次运行会新建会话",
 			"form.model": "模型",
 			"form.modelDefault": "默认",
 			"column.modelInherited": "上次使用",
@@ -655,7 +658,7 @@ window.__ModuleLoader__.load({
 			return { job, chat, opened: chat === null ? false : await openChat(chat) };
 		}
 		/** One row in the schedules table. */
-		function JobRow({ job, t, editing, chats, defaultModel, onEdit, onChanged, onError, openChat }) {
+		function JobRow({ job, t, editing, chats, archivedIds, defaultModel, onEdit, onChanged, onError, openChat }) {
 			const [busy, setBusy] = react.useState(null);
 			const next = formatAt(job.nextRunAt, job.timeZone);
 			const last = formatAt(job.lastRunAt, job.timeZone);
@@ -731,7 +734,9 @@ window.__ModuleLoader__.load({
 					? t("column.chatNew")
 					: (job.sessionId === null || job.sessionId === undefined
 						? t("column.chatUnbound")
-						: (chats ?? []).find((chat) => chat.sessionId === job.sessionId)?.title ?? job.sessionId)),
+						: (Array.isArray(archivedIds) && archivedIds.includes(job.sessionId)
+							? t("column.chatArchived")
+							: (chats ?? []).find((chat) => chat.sessionId === job.sessionId)?.title ?? job.sessionId))),
 				el("td", {
 					style: {
 						padding: "8px 10px",
@@ -1343,6 +1348,10 @@ window.__ModuleLoader__.load({
 			/** Id of the job whose editor is open, or null when none is. */
 			const [editingId, setEditingId] = react.useState(null);
 			const workspaces = useWorkspaces((snapshot) => snapshot.items) ?? [];
+			// Archiving hides a chat but leaves it addressable, so a job bound to one
+			// posts into a conversation the person can no longer see. The table says
+			// so, because otherwise the run looks like it did nothing.
+			const archivedIds = useWorkspaces((snapshot) => snapshot.archivedSessionIds) ?? [];
 			const load = react.useCallback(async () => {
 				try {
 					const payload = await callHost("GET", JOBS_URL);
@@ -1452,6 +1461,7 @@ window.__ModuleLoader__.load({
 												job,
 												t,
 												chats,
+												archivedIds,
 												defaultModel: settings.default,
 												editing: job.id === editingId,
 												onEdit: (id) => setEditingId((current) => (current === id ? null : id)),

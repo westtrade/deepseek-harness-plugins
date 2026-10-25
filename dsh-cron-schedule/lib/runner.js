@@ -145,6 +145,50 @@ function agentOptionsFor(runtime, job, fallback) {
 }
 
 /**
+ * Whether the chat a job points at has been archived by the person.
+ *
+ * Archiving is a *hiding* action in the harness — the session keeps its slot and
+ * its transcript, it is only dropped from the sidebar and the pickers. So a job
+ * bound to an archived chat can still deliver into it, and that is the trap: the
+ * run reports success, the message lands in a conversation nobody can see, and
+ * the schedule looks broken. A chat sent to the archive is, for a schedule, gone
+ * — the run must start a fresh one and bind it.
+ *
+ * @param runtime - resolved services.
+ * @param sessionId - the chat the job is bound to.
+ * @returns true when that chat is archived.
+ */
+function isArchivedChat(runtime, sessionId) {
+	if (typeof sessionId !== 'string' || sessionId === '') return false;
+	try {
+		const archived = runtime.workspaceRegistry?.archivedSessionIds;
+		return Array.isArray(archived) && archived.includes(sessionId);
+	} catch (error) {
+		// A registry that cannot answer must not block the run: the delivery is
+		// still attempted, and a failure there has its own fallback below.
+		runtime.logger?.warn?.(`cron-schedule: could not read the archive set: ${String(error)}`);
+		return false;
+	}
+}
+
+/**
+ * Whether a delivery failure means "that chat is not there any more".
+ *
+ * Only these fall back to a new chat. A rate limit, a model outage or a
+ * permission error must surface as a failed run: silently starting a new chat
+ * would hide a real problem and scatter one task across conversations.
+ *
+ * @param error - the rejection from the session controller.
+ * @returns true when the chat is gone (deleted, archived away, or unknown).
+ */
+function isMissingChat(error) {
+	const code = typeof error?.code === 'string' ? error.code : '';
+	if (code === 'session/not-found' || code === 'SESSION_NOT_FOUND') return true;
+	const message = String(error?.message ?? error);
+	return /session\s+"[^"]*"\s+not found|unknown session|is archived/i.test(message);
+}
+
+/**
  * Deliver one run's prompt into an existing chat.
  *
  * `runtime.sessionController.prompt` is the same admission path the Web
@@ -202,22 +246,36 @@ async function promptExistingChat(runtime, sessionId, text, signal) {
 export async function runJob(runtime, job, options = {}) {
 	const signal = options.signal;
 	const now = options.now ?? Date.now();
-	// A chat picked by the person (or already bound) wins over creating a new one.
+	// A chat picked by the person (or already bound) wins over creating a new one —
+	// unless it has been archived, which for a schedule means "that chat is gone":
+	// delivering into it would report success into a conversation nobody sees.
 	const bound = options.requestedSessionId ?? job.sessionId;
+	const archived = isArchivedChat(runtime, bound);
 
-	if (bound !== undefined && job.alwaysNewChat !== true) {
-		// The chat may predate the brief (the field was added later) or the person
-		// may have rewritten it: deliver it again, as its own turn, before the task.
-		const briefed = needsBrief(job, bound);
-		if (briefed) await promptExistingChat(runtime, bound, job.initialPrompt, signal);
-		await promptExistingChat(runtime, bound, job.prompt, signal);
-		return {
-			sessionId: bound,
-			workspacePath: job.workspacePath,
-			created: false,
-			bindable: false,
-			...(briefed ? { briefSessionId: bound, briefHash: briefFingerprint(job.initialPrompt) } : {})
-		};
+	if (bound !== undefined && !archived && job.alwaysNewChat !== true) {
+		try {
+			// The chat may predate the brief (the field was added later) or the person
+			// may have rewritten it: deliver it again, as its own turn, before the task.
+			const briefed = needsBrief(job, bound);
+			if (briefed) await promptExistingChat(runtime, bound, job.initialPrompt, signal);
+			await promptExistingChat(runtime, bound, job.prompt, signal);
+			return {
+				sessionId: bound,
+				workspacePath: job.workspacePath,
+				created: false,
+				bindable: false,
+				...(briefed ? { briefSessionId: bound, briefHash: briefFingerprint(job.initialPrompt) } : {})
+			};
+		} catch (error) {
+			// The chat may have been deleted (or archived between the check above and
+			// the delivery). Starting a new one keeps the schedule working; any other
+			// failure is the run's own and must be reported as one.
+			if (!isMissingChat(error)) throw error;
+			runtime.logger?.warn?.(`cron-schedule: chat "${bound}" is gone (${String(error?.message ?? error)}); starting a new one`);
+		}
+	}
+	if (archived) {
+		runtime.logger?.info?.(`cron-schedule: chat "${bound}" is archived; starting a new one`);
 	}
 
 	const workspace = await ensureWorkspace(runtime, job.workspacePath);
