@@ -20,6 +20,28 @@ import { createHash, randomUUID } from 'node:crypto';
 export const SCHEDULED_SESSION_PREFIX = 'session-cron';
 
 /**
+ * Fold the setup brief and the task into one message body.
+ *
+ * The brief exists so the task text can stay short, but the model must read
+ * both in the SAME turn: the brief says who the bot is and how to work, and the
+ * task tells it what to do now. They are one body of text with a blank line
+ * between them — the brief first, then the task.
+ *
+ * Delivering them as two messages does NOT work: `agent.followup()` both queues
+ * a message and wakes the driver, so the first call starts a turn with only the
+ * brief, the second lands in the next turn. That costs a whole extra model turn
+ * and the bot acts on the brief alone (in this project it answered "Incoming is
+ * empty" before it had even been given the task).
+ *
+ * @param brief - the setup brief, or undefined when the job has none.
+ * @param task - the task body.
+ * @returns the text to send.
+ */
+function composeBody(brief, task) {
+	return typeof brief === 'string' && brief !== '' ? `${brief}\n\n${task}` : task;
+}
+
+/**
  * Build one user message for a scheduled run.
  *
  * The harness freezes messages created through `createUserMessage` from
@@ -27,14 +49,11 @@ export const SCHEDULED_SESSION_PREFIX = 'session-cron';
  * `user` role, text content, and a provenance source) so the log carries the
  * job's identity without importing that package.
  *
- * A job has up to two messages: the `init` brief that sets a new chat up, and
- * the `task` it repeats. They are separate turns on purpose — the chat then
- * reads [brief, task, task, …] instead of carrying the whole brief again on
- * every run.
- *
  * @param job - the stored job record.
  * @param text - the message body (defaults to the job's task prompt).
- * @param stage - `init` for the setup message, `task` for the recurring one.
+ * @param stage - `init` when this run also carried the setup brief, `task`
+ *   otherwise. It is one message either way; the stage only records whether the
+ *   brief was part of it.
  * @returns a frozen user message.
  */
 function scheduledMessage(job, text = job.prompt, stage = 'task') {
@@ -255,10 +274,9 @@ export async function runJob(runtime, job, options = {}) {
 	if (bound !== undefined && !archived && job.alwaysNewChat !== true) {
 		try {
 			// The chat may predate the brief (the field was added later) or the person
-			// may have rewritten it: deliver it again, as its own turn, before the task.
+			// may have rewritten it: carry it again, folded into this run's message.
 			const briefed = needsBrief(job, bound);
-			if (briefed) await promptExistingChat(runtime, bound, job.initialPrompt, signal);
-			await promptExistingChat(runtime, bound, job.prompt, signal);
+			await promptExistingChat(runtime, bound, briefed ? composeBody(job.initialPrompt, job.prompt) : job.prompt, signal);
 			return {
 				sessionId: bound,
 				workspacePath: job.workspacePath,
@@ -312,8 +330,9 @@ export async function runJob(runtime, job, options = {}) {
 		} catch (error) {
 			runtime.logger?.warn?.(`cron-schedule: could not title session "${sessionId}": ${String(error)}`);
 		}
-		if (briefed) handle.agent.followup(scheduledMessage(job, job.initialPrompt, 'init'));
-		handle.agent.followup(scheduledMessage(job));
+		// Exactly one followup: a second call would be queued for the NEXT turn, so
+		// the model would act on the first message alone (see composeBody).
+		handle.agent.followup(scheduledMessage(job, briefed ? composeBody(job.initialPrompt, job.prompt) : job.prompt, briefed ? 'init' : 'task'));
 	} catch (error) {
 		// Roll the half-created session back so a failed run leaves no ghost chat.
 		if (attached) {

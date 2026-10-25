@@ -692,14 +692,17 @@ try {
 	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefJob.body.job.id)}/run`);
 	const briefAgent = host.created.at(-1);
 	ok('a job with a brief still starts one chat', host.created.length === chatsBeforeBrief + 1, `created=${host.created.length}`);
-	ok('the new chat reads the brief first, then the task', briefAgent.agent.messages.length === 2
-		&& briefAgent.agent.messages[0].content[0].text === 'Ты — ревьюер. Доска: .vscode/TODO.md'
-		&& briefAgent.agent.messages[1].content[0].text === 'проверь доску',
+	// One message, not two: `followup()` wakes the driver, so a second message
+	// would be queued for the NEXT turn and the model would answer the brief
+	// before it ever saw the task.
+	ok('the new chat gets the brief and the task as ONE message', briefAgent.agent.messages.length === 1,
 		JSON.stringify(briefAgent.agent.messages.map((entry) => entry.content[0].text)));
-	ok('both messages are cron messages, the brief marked as init', briefAgent.agent.messages.every((entry) => entry.source.kind === 'cron')
-		&& briefAgent.agent.messages[0].source.stage === 'init'
-		&& briefAgent.agent.messages[1].source.stage === 'task',
-		JSON.stringify(briefAgent.agent.messages.map((entry) => entry.source.stage)));
+	ok('that message is the brief followed by the task',
+		briefAgent.agent.messages[0].content[0].text === 'Ты — ревьюер. Доска: .vscode/TODO.md\n\nпроверь доску',
+		JSON.stringify(briefAgent.agent.messages[0].content[0].text));
+	ok('the message is marked as carrying the brief', briefAgent.agent.messages[0].source.kind === 'cron'
+		&& briefAgent.agent.messages[0].source.stage === 'init',
+		JSON.stringify(briefAgent.agent.messages[0].source));
 	// The next run continues that chat: the brief is already in the transcript,
 	// so only the task is delivered — which is the point of the separate field.
 	const briefPromptsBefore = host.prompts.length;
@@ -717,9 +720,8 @@ try {
 	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefAlways.body.job.id)}/run`);
 	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(briefAlways.body.job.id)}/run`);
 	const alwaysRuns = host.created.slice(-2);
-	ok('every always-new-chat run carries the brief', alwaysRuns.every((entry) => entry.agent.messages.length === 2
-		&& entry.agent.messages[0].content[0].text === 'длинный бриф'
-		&& entry.agent.messages[1].content[0].text === 'короткая задача'),
+	ok('every always-new-chat run carries the brief, in one message', alwaysRuns.every((entry) => entry.agent.messages.length === 1
+		&& entry.agent.messages[0].content[0].text === 'длинный бриф\n\nкороткая задача'),
 		JSON.stringify(alwaysRuns.map((entry) => entry.agent.messages.map((message) => message.content[0].text))));
 	// The field is optional, and an edited form can clear it.
 	const noBrief = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
@@ -743,21 +745,19 @@ try {
 	ok('the late brief is stored', lateBrief.status === 201 && lateBrief.body.job.initialPrompt === 'бриф для старого чата', JSON.stringify(lateBrief.body?.job?.initialPrompt));
 	const promptsBeforeLate = host.prompts.length;
 	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}/run`);
-	ok('a chat that predates the brief receives it first', host.prompts.length === promptsBeforeLate + 2
-		&& host.prompts.at(-2).content[0].text === 'бриф для старого чата'
-		&& host.prompts.at(-1).content[0].text === 'задача',
+	ok('a chat that predates the brief receives it folded into the task', host.prompts.length === promptsBeforeLate + 1
+		&& host.prompts.at(-1).content[0].text === 'бриф для старого чата\n\nзадача',
 		JSON.stringify(host.prompts.slice(promptsBeforeLate).map((entry) => entry.content[0].text)));
 	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}/run`);
-	ok('once delivered, the same chat gets the task alone', host.prompts.length === promptsBeforeLate + 3
+	ok('once delivered, the same chat gets the task alone', host.prompts.length === promptsBeforeLate + 2
 		&& host.prompts.at(-1).content[0].text === 'задача',
 		JSON.stringify(host.prompts.slice(promptsBeforeLate).map((entry) => entry.content[0].text)));
 	// An edited brief must not be silently ignored under an existing chat.
 	const editedBrief = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}`, { initialPrompt: 'обновлённый бриф' });
 	ok('editing the brief is accepted', editedBrief.status === 200 && editedBrief.body.job.initialPrompt === 'обновлённый бриф', JSON.stringify(editedBrief.body?.job?.initialPrompt));
 	await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(lateBrief.body.job.id)}/run`);
-	ok('an edited brief is delivered again', host.prompts.length === promptsBeforeLate + 5
-		&& host.prompts.at(-2).content[0].text === 'обновлённый бриф'
-		&& host.prompts.at(-1).content[0].text === 'задача',
+	ok('an edited brief is delivered again', host.prompts.length === promptsBeforeLate + 3
+		&& host.prompts.at(-1).content[0].text === 'обновлённый бриф\n\nзадача',
 		JSON.stringify(host.prompts.slice(promptsBeforeLate).map((entry) => entry.content[0].text)));
 
 	// --- an explicit chat, and the "always new chat" switch ---
