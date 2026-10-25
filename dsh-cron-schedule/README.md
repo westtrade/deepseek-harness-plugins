@@ -482,7 +482,7 @@ node scripts/cron-test.mjs    # движок расписаний: 50 прове
 node scripts/gate-test.mjs    # проверка доски: 35
 node scripts/store-test.mjs   # хранилище и планировщик: 82
 node scripts/host-test.mjs    # маршруты, инструменты, запуск чата: 266
-node scripts/client-smoke.mjs # обвязка панели: 228
+node scripts/client-smoke.mjs # обвязка панели (рендер + текст): 247
 ```
 
 ## Ограничения

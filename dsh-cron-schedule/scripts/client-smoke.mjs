@@ -384,5 +384,200 @@ console.log(`  inject    : ${inject.join(', ')}`);
 console.log(`  effects   : ${host.effects.join(' | ')}`);
 console.log(`  registered: ${host.registrations.map((entry) => `${entry.options.name} → ${entry.options.id ?? entry.options.key}`).join(' | ')}`);
 console.log(`  copy keys : ${enKeys.length} en / ${zhKeys.length} zh / ${ruKeys.length} ru`);
+
+// --- the panel actually renders, including the new gate block ---
+// Everything above reads the source; this evaluates the components, which is
+// what catches a ReferenceError inside a new block (a hook used before its
+// `const`, a helper that was never defined). The react stand-in is upgraded to
+// a tiny hook runtime for this: state cells, one-shot effects, and a re-render
+// after an async load settles. Canned Host answers keep it offline.
+const hookCells = [];
+let hookCursor = 0;
+let hookEffects = [];
+let rerenderRequested = false;
+/**
+ * Run one component the way React would: state survives, effects run once, and
+ * a state change re-renders until it settles.
+ *
+ * @param component - the function component.
+ * @param props - its props.
+ * @returns the element tree of the last pass.
+ */
+async function render(component, props) {
+	hookCells.length = 0;
+	hookCursor = 0;
+	hookEffects = [];
+	rerenderRequested = false;
+	let tree = component(props);
+	const effects = hookEffects;
+	hookEffects = [];
+	for (const effect of effects) effect();
+	// The panel's own effect loads from the Host; those promises resolve outside
+	// React, so each settled microtask turn needs another pass. Max a few passes
+	// so a component that always sets state cannot spin here forever.
+	for (let pass = 0; pass < 6; pass += 1) {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		hookCursor = 0;
+		hookEffects = [];
+		rerenderRequested = false;
+		tree = component(props);
+		// Effects registered on this pass belong to the next one only if the
+		// component asked for one; re-running them would loop the loader.
+		hookEffects = [];
+		if (!rerenderRequested) break;
+	}
+	return tree;
+}
+Object.assign(reactStub, {
+	useState: (initial) => {
+		const index = hookCursor;
+		hookCursor += 1;
+		if (!(index in hookCells)) hookCells[index] = typeof initial === 'function' ? initial() : initial;
+		return [hookCells[index], (next) => {
+			hookCells[index] = typeof next === 'function' ? next(hookCells[index]) : next;
+			rerenderRequested = true;
+		}];
+	},
+	useEffect: (effect) => {
+		hookEffects.push(effect);
+	},
+	useCallback: (fn) => fn
+});
+/** Canned Host answers, so the panel can mount without a server. */
+const cannedJobs = [
+	{ id: 'job-plain', name: 'Plain timer', expression: '0 9 * * *', description: 'daily', timeZone: 'UTC', workspacePath: '/tmp/p', prompt: 'p', enabled: true, gate: null, missed: [], alwaysNewChat: false },
+	{ id: 'job-gated', name: 'Gated bot', expression: '*/30 * * * *', description: 'every 30 min', timeZone: 'UTC', workspacePath: '/tmp/p', prompt: 'p', enabled: true, gate: { file: 'TODO.md', heading: 'Incoming' }, missed: [], alwaysNewChat: false, lastStatus: 'skipped', lastNote: 'no open tasks under "## Incoming"' }
+];
+globalThis.fetch = async (url) => {
+	const text = String(url);
+	const payload = text.includes('/chats') ? { chats: [] }
+		: text.includes('/settings') ? { allowedModels: [], models: [], default: null }
+			: text.includes('/jobs') ? { revision: 1, jobs: cannedJobs }
+				: {};
+	return { ok: true, status: 200, async json() { return payload; } };
+};
+
+/**
+ * Walk an element tree, expanding function components in place.
+ *
+ * `el(JobRow, …)` stores the component itself, not its output, so a plain walk
+ * would stop at every row and miss all the copy inside it.
+ */
+/** Every element of a tree (components already expanded), for structural probes. */
+function collect(node, out = []) {
+	if (node === null || node === undefined || out.length > 4000) return out;
+	if (Array.isArray(node)) {
+		for (const child of node) collect(child, out);
+		return out;
+	}
+	if (typeof node !== 'object') return out;
+	out.push(node);
+	for (const child of Array.isArray(node.children) ? node.children : []) collect(child, out);
+	return out;
+}
+function walk(node, visit, depth = 0) {
+	if (node === null || node === undefined || depth > 80) return;
+	if (Array.isArray(node)) {
+		for (const child of node) walk(child, visit, depth + 1);
+		return;
+	}
+	if (typeof node !== 'object') {
+		visit(node);
+		return;
+	}
+	visit(node);
+	if (typeof node.type === 'function' && typeof node.props === 'object' && node.props !== null) {
+		// Expand a component with the surrounding hook cells reset, the way a
+		// nested render works; a component that throws is skipped, not fatal.
+		try {
+			const saved = hookCursor;
+			hookCursor = 0;
+			const produced = node.type(node.props);
+			hookCursor = saved;
+			walk(produced, visit, depth + 1);
+		} catch {
+			/* a nested component that needs live context is out of scope here */
+		}
+		return;
+	}
+	for (const child of Array.isArray(node.children) ? node.children : []) walk(child, visit, depth + 1);
+}
+/** Every string in a tree, joined — enough to assert on rendered copy. */
+const treeText = (node) => {
+	const parts = [];
+	walk(node, (entry) => {
+		if (typeof entry === 'string') parts.push(entry);
+	});
+	return parts.join('\n');
+};
+const propBag = {
+	useWorkspaces: () => [],
+	t: (key, values) => (values === undefined ? key : `${key} ${JSON.stringify(values)}`),
+	pickDirectory: async () => '/tmp/picked',
+	openChat: async () => true
+};
+let panelTree;
+let panelError;
+try {
+	panelTree = await render(main.component, propBag);
+} catch (error) {
+	panelError = error;
+}
+ok('the panel renders without throwing', panelError === undefined, String(panelError?.stack ?? '').split('\n').slice(0, 3).join(' | '));
+const panelText = treeText(panelTree);
+ok('the panel renders its rows', panelText.includes('Gated bot') && panelText.includes('Plain timer'), panelText.slice(0, 200));
+ok('the panel renders the gate column', panelText.includes('column.gate'));
+ok('a gated row is marked as gated', panelText.includes('column.gateOn'));
+ok('an ungated row is marked as always running', panelText.includes('column.gateOff'));
+// A skipped run must read as a skip with its reason, not as a failure.
+ok('a skipped row explains itself', panelText.includes('job.skipped'), panelText.slice(-400));
+
+// The add form is an element in that tree; render it to inspect its fields.
+let formElement;
+walk(panelTree, (node) => {
+	if (formElement === undefined && typeof node.type === 'function' && node.type.name === 'JobForm') formElement = node;
+});
+ok('the panel mounts the add form', formElement !== undefined);
+let formTree;
+let formError;
+try {
+	formTree = await render(formElement.type, formElement.props);
+} catch (error) {
+	formError = error;
+}
+ok('the form renders without throwing', formError === undefined, String(formError?.stack ?? '').split('\n').slice(0, 3).join(' | '));
+const formText = treeText(formTree);
+ok('the form renders the gate checkbox', formText.includes('form.gate'), formText.slice(0, 200));
+ok('the form renders the setup-brief field', formText.includes('form.initialPrompt'));
+ok('the form renders the every-run task field', formText.includes('form.prompt'));
+// The gate settings stay hidden while the box is off, by design: an unchecked
+// gate is "a plain timer", and showing a file path for it would be a lie.
+ok('the gate settings are hidden while it is off', !formText.includes('form.gateFile') && !formText.includes('form.gateHeading'));
+
+// Editing a job that already has a gate is the realistic "box is ticked" state:
+// the same fields must be visible, with the job's own file and heading.
+let gatedTree;
+let gatedError;
+try {
+	gatedTree = await render(formElement.type, { ...formElement.props, job: cannedJobs[1], editing: true });
+} catch (error) {
+	gatedError = error;
+}
+ok('a gated job renders its editor', gatedError === undefined, String(gatedError?.stack ?? '').split('\n').slice(0, 3).join(' | '));
+const gatedText = treeText(gatedTree);
+ok('an already gated job shows the file field', gatedText.includes('form.gateFile'), gatedText.slice(-300));
+ok('an already gated job shows the heading field', gatedText.includes('form.gateHeading'));
+ok('the gate settings offer a check button', gatedText.includes('form.gateCheck'));
+// Three policy boxes render in this order: always-new chat, the board gate,
+// then the human-only catch-up switch. The gate is the middle one.
+const gateBoxOf = (tree) => collect(tree).filter((node) => node.props?.type === 'checkbox')[1];
+const gatedBoxes = collect(gatedTree).filter((node) => node.props?.type === 'checkbox');
+ok('the gate box is ticked for a gated job', gateBoxOf(gatedTree)?.props.checked === true, JSON.stringify(gatedBoxes.map((box) => box.props.checked)));
+// And the reverse: a plain timer's editor shows no gate fields at all.
+const plainTree = await render(formElement.type, { ...formElement.props, job: cannedJobs[0], editing: true });
+const plainText = treeText(plainTree);
+ok('a plain timer shows no gate settings', !plainText.includes('form.gateFile') && !plainText.includes('form.gateHeading'));
+ok('the gate box is clear for a plain timer', gateBoxOf(plainTree)?.props.checked === false);
+
 console.log(`\nclient: pass=${pass} fail=${fail}`);
 process.exit(fail === 0 ? 0 : 1);
