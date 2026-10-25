@@ -222,7 +222,8 @@ for (const required of [
 	'form.save', 'form.saving', 'form.cancel',
 	'form.autoCatchUp', 'form.autoCatchUpHint', 'column.auto', 'column.autoOn', 'column.autoAsk',
 	'form.gate', 'form.gateHint', 'form.gateFile', 'form.gateHeading', 'form.gateCheck', 'form.gateCreate',
-	'form.gateReady', 'form.gateEmpty', 'form.gateMissing', 'form.gateNoSection', 'form.gateError',
+	'form.gateFound', 'form.gateOpen', 'form.gateNone', 'form.gateMissing', 'form.gateMissingHint',
+	'form.gateNoSection', 'form.gateNoSectionHint', 'form.gateError', 'form.gateChecked',
 	'column.gate', 'column.gateOn', 'column.gateOff', 'job.skipped',
 	'form.model', 'form.modelDefault', 'form.modelRestricted', 'column.model',
 	'form.chat', 'form.chatNew', 'form.chatPick', 'form.chatPickPlaceholder', 'form.chatBound', 'form.chatIgnored',
@@ -286,6 +287,13 @@ ok('the check carries the folder for an unsaved schedule', source.includes('work
 ok('a missing board offers the create button', source.includes('board.creatable === true') && source.includes('create: true'));
 ok('the checkbox runs a check immediately', source.includes('if (on) void checkBoard();'));
 ok('every verdict has its own sentence', ['ready', 'empty', 'missing', 'no-section'].every((verdict) => source.includes(`payload.verdict === "${verdict}"`)));
+// The card reports what the check found, and only then what it implies.
+ok('the report names the found column and the file', source.includes('fill(t("form.gateFound"), { heading, file })'));
+ok('open tasks are reported as a count', source.includes('fill(t("form.gateOpen"), { open: payload.open, closed: payload.closed ?? 0 })'));
+ok('an empty column reports its closed count too', source.includes('fill(t("form.gateNone"), { closed: payload.closed ?? 0 })'));
+ok('the finding and the consequence are two lines', source.includes('el("div", { style: { color: "var(--dsw-alias-label-secondary)" } }, board.text)') && source.includes('board.note === null || board.note === undefined ? null : el("div", null, board.note)'));
+ok('a missing section lists the sections it does have', source.includes('fill(t("form.gateNoSectionHint"), { list: known })'));
+ok('a check is stamped with its time', source.includes('fill(t("form.gateChecked"), { time: formatAt(board.at) ?? "" })'));
 ok('the table shows whether a job is gated', source.includes('t("column.gateOn")') && source.includes('t("column.gateOff")'));
 ok('a skipped row explains itself', source.includes('job.lastStatus === "skipped" && typeof job.lastNote === "string"'));
 ok('form has a model dropdown', source.includes('t("form.model")') && source.includes('models: modelChoices'));
@@ -553,6 +561,41 @@ ok('the form renders the every-run task field', formText.includes('form.prompt')
 // The gate settings stay hidden while the box is off, by design: an unchecked
 // gate is "a plain timer", and showing a file path for it would be a lie.
 ok('the gate settings are hidden while it is off', !formText.includes('form.gateFile') && !formText.includes('form.gateHeading'));
+
+// --- the board result: the finding first, the consequence second ---
+// A real Host answer is fed through the component, so the wording under test is
+// the wording a person reads. The two lines must be distinct: a report about the
+// column, then what it implies — never a bare prediction.
+// The English source strings already assert the shape; these check that the two
+// halves are genuinely separate copy keys with the right placeholders.
+const gateKeys = ['form.gateFound', 'form.gateOpen', 'form.gateNone', 'form.gateMissing', 'form.gateMissingHint', 'form.gateNoSection', 'form.gateNoSectionHint'];
+for (const key of gateKeys) ok(`gate copy ${key} exists`, enKeys.includes(key) && ruKeys.includes(key) && zhKeys.includes(key));
+const dicts = [
+	['en', (k) => dictionary.dicts.en[k]],
+	['ru', (k) => dictionary.dicts.ru[k]]
+];
+for (const [label, read] of dicts) {
+	// The empty-column line reports the count and only then the consequence.
+	ok(`[${label}] the empty line reports a count before the consequence`,
+		read('form.gateNone').includes('{closed}') && read('form.gateNone').indexOf('{closed}') < read('form.gateNone').indexOf('—'),
+		read('form.gateNone'));
+	// The found-line names the column and the file, and promises nothing.
+	ok(`[${label}] the found line is a report, not a verdict`,
+		read('form.gateFound').includes('{heading}') && read('form.gateFound').includes('{file}') && !/skip|пропу|запуск/i.test(read('form.gateFound')),
+		read('form.gateFound'));
+	// The open-tasks line reports counts in both numbers.
+	ok(`[${label}] the ready line reports open and closed counts`,
+		read('form.gateOpen').includes('{open}') && read('form.gateOpen').includes('{closed}'),
+		read('form.gateOpen'));
+	// A missing section names what the file does contain.
+	ok(`[${label}] the no-section hint lists the real sections`,
+		read('form.gateNoSectionHint').includes('{list}'),
+		read('form.gateNoSectionHint'));
+}
+// The consequence is only ever the SECOND line: an "empty" answer must not put
+// the skip sentence where the finding goes.
+ok('the skip consequence is not the first line', !dictionary.dicts.ru['form.gateFound'].includes('пропущ'));
+ok('the finding is not phrased as a prediction', !dictionary.dicts.ru['form.gateFound'].includes('состоится'));
 
 // Editing a job that already has a gate is the realistic "box is ticked" state:
 // the same fields must be visible, with the job's own file and heading.

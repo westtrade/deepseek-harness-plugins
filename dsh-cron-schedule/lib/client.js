@@ -98,10 +98,13 @@ window.__ModuleLoader__.load({
 			"form.gateHeadingHint": "A second-level heading in that file, e.g. ## Incoming.",
 			"form.gateCheck": "Check board",
 			"form.gateCreate": "Create file",
-			"form.gateReady": "{open} open task(s) under \"{heading}\" — the run will start.",
-			"form.gateEmpty": "No open tasks under \"{heading}\" — the run will be skipped, the AI will not start.",
+			"form.gateFound": "Column \"{heading}\" found in {file}",
+			"form.gateOpen": "Open tasks right now: {open} ({closed} closed) — the next run will start.",
+			"form.gateNone": "No open tasks right now ({closed} closed) — the next run will be skipped, the AI will not start.",
 			"form.gateMissing": "File not found: {path}",
-			"form.gateNoSection": "No \"{heading}\" section in {path}",
+			"form.gateMissingHint": "Create it with the button below, or fix the path.",
+			"form.gateNoSection": "No \"{heading}\" section in {file}",
+			"form.gateNoSectionHint": "Sections it does have: {list}",
 			"form.gateError": "Cannot read {path}: {message}",
 			"form.gateChecked": "Checked {time}",
 			"column.gate": "Board gate",
@@ -224,10 +227,13 @@ window.__ModuleLoader__.load({
 			"form.gateHeadingHint": "Заголовок второго уровня в этом файле, например ## Incoming.",
 			"form.gateCheck": "Проверить доску",
 			"form.gateCreate": "Создать файл",
-			"form.gateReady": "Открытых задач в «{heading}»: {open} — запуск состоится.",
-			"form.gateEmpty": "В «{heading}» нет открытых задач — запуск будет пропущен, ИИ не стартует.",
+			"form.gateFound": "Столбец «{heading}» найден в {file}",
+			"form.gateOpen": "Открытых задач сейчас: {open} (закрытых {closed}) — следующий запуск состоится.",
+			"form.gateNone": "Открытых задач сейчас нет (закрытых {closed}) — следующий запуск будет пропущен, ИИ не стартует.",
 			"form.gateMissing": "Файл не найден: {path}",
-			"form.gateNoSection": "В файле {path} нет раздела «{heading}»",
+			"form.gateMissingHint": "Создайте его кнопкой ниже или исправьте путь.",
+			"form.gateNoSection": "В файле {file} нет раздела «{heading}»",
+			"form.gateNoSectionHint": "В нём есть разделы: {list}",
 			"form.gateError": "Не удалось прочитать {path}: {message}",
 			"form.gateChecked": "Проверено {time}",
 			"column.gate": "Проверка доски",
@@ -342,10 +348,13 @@ window.__ModuleLoader__.load({
 			"form.gateHeadingHint": "该文件中的二级标题，例如 ## Incoming。",
 			"form.gateCheck": "检查看板",
 			"form.gateCreate": "创建文件",
-			"form.gateReady": "「{heading}」中有 {open} 个未完成任务——将开始运行。",
-			"form.gateEmpty": "「{heading}」中没有未完成任务——本次运行将被跳过，不会启动 AI。",
+			"form.gateFound": "已找到「{heading}」列：{file}",
+			"form.gateOpen": "当前未完成任务：{open}（已完成 {closed}）——下次运行将开始。",
+			"form.gateNone": "当前没有未完成任务（已完成 {closed}）——下次运行将被跳过，不会启动 AI。",
 			"form.gateMissing": "找不到文件：{path}",
-			"form.gateNoSection": "{path} 中没有「{heading}」小节",
+			"form.gateMissingHint": "请用下方按钮创建，或修正路径。",
+			"form.gateNoSection": "{file} 中没有「{heading}」小节",
+			"form.gateNoSectionHint": "其中已有的小节：{list}",
 			"form.gateError": "无法读取 {path}：{message}",
 			"form.gateChecked": "检查于 {time}",
 			"column.gate": "看板检查",
@@ -574,26 +583,58 @@ window.__ModuleLoader__.load({
 			return payload;
 		}
 		/**
-		 * Turn a board-check answer into the sentence the form shows.
+		 * Turn a board-check answer into the two lines the form shows.
 		 *
-		 * The mapping is deliberately one-to-one with {@link gateVerdict} on the
-		 * Host: `ready` promises a run, `empty` warns that the next run is skipped,
-		 * `missing` / `no-section` / `error` are the three states a person can fix
-		 * or must be told about. Only the first two offer a button, and `missing`
-		 * offers it once the folder is known.
+		 * The first line states what the check FOUND (the column is there, the
+		 * file is not), the second what that means for the next run. They are kept
+		 * apart on purpose: "Column Incoming found in TODO.md" + "no open tasks
+		 * right now" is a report, while "the run will be skipped" alone is a
+		 * prediction the person cannot verify — and it reads as if the project
+		 * were misconfigured when it is merely empty.
 		 *
-		 * @param payload - the Host answer.
+		 * @param payload - the Host answer (see the board route).
 		 * @param t - copy lookup.
-		 * @returns `{ tone, text, creatable }`.
+		 * @returns `{ tone, text, note, creatable }`.
 		 */
 		function describeBoard(payload, t) {
 			const heading = payload.heading ?? "Incoming";
-			const path = payload.resolvedPath ?? payload.file ?? "";
-			if (payload.verdict === "ready") return { tone: "ok", text: fill(t("form.gateReady"), { open: payload.open, heading }), creatable: false };
-			if (payload.verdict === "empty") return { tone: "warn", text: fill(t("form.gateEmpty"), { heading }), creatable: false };
-			if (payload.verdict === "missing") return { tone: "error", text: fill(t("form.gateMissing"), { path }), creatable: true };
-			if (payload.verdict === "no-section") return { tone: "error", text: fill(t("form.gateNoSection"), { heading, path }), creatable: true };
-			return { tone: "error", text: fill(t("form.gateError"), { path, message: payload.error ?? "" }), creatable: false };
+			// The configured value reads better than the absolute path: it is what
+			// the field above shows, so the sentence points at the person's own text.
+			const file = payload.file ?? payload.resolvedPath ?? "";
+			if (payload.verdict === "ready") {
+				return {
+					tone: "ok",
+					text: fill(t("form.gateFound"), { heading, file }),
+					note: fill(t("form.gateOpen"), { open: payload.open, closed: payload.closed ?? 0 }),
+					creatable: false
+				};
+			}
+			if (payload.verdict === "empty") {
+				return {
+					tone: "warn",
+					text: fill(t("form.gateFound"), { heading, file }),
+					note: fill(t("form.gateNone"), { closed: payload.closed ?? 0 }),
+					creatable: false
+				};
+			}
+			if (payload.verdict === "missing") {
+				return {
+					tone: "error",
+					text: fill(t("form.gateMissing"), { path: payload.resolvedPath ?? file }),
+					note: t("form.gateMissingHint"),
+					creatable: true
+				};
+			}
+			if (payload.verdict === "no-section") {
+				const known = Array.isArray(payload.headings) && payload.headings.length > 0 ? payload.headings.join(", ") : "—";
+				return {
+					tone: "error",
+					text: fill(t("form.gateNoSection"), { heading, file }),
+					note: fill(t("form.gateNoSectionHint"), { list: known }),
+					creatable: true
+				};
+			}
+			return { tone: "error", text: fill(t("form.gateError"), { path: payload.resolvedPath ?? file, message: payload.error ?? "" }), note: null, creatable: false };
 		}
 		/**
 		 * Start a run and follow it into the chat it wrote into.
@@ -878,11 +919,13 @@ window.__ModuleLoader__.load({
 						heading: draft.gateHeading.trim(),
 						create: options.create === true
 					});
-					setBoard(describeBoard(payload, t));
+					// `at` is stamped here, not in the copy: the answer is a point in
+					// time, and the panel shows when that point was.
+					setBoard({ ...describeBoard(payload, t), at: Date.now() });
 				} catch (error) {
 					// A brand-new schedule has no id yet, so the Host cannot resolve its
 					// workspace; explain the gate without pretending to have checked it.
-					setBoard({ tone: "warn", text: messageOf(error) ?? String(error), creatable: false });
+					setBoard({ tone: "warn", text: messageOf(error) ?? String(error), note: null, creatable: false, at: Date.now() });
 				} finally {
 					setBoardBusy(false);
 				}
@@ -1248,13 +1291,20 @@ window.__ModuleLoader__.load({
 									: "var(--dsw-alias-label-error)"
 						}
 					},
-						el("div", null, board.text),
+						// What the check found …
+						el("div", { style: { color: "var(--dsw-alias-label-secondary)" } }, board.text),
+						// … and what it means for the next run, on its own line, so the
+						// report and the consequence cannot be confused.
+						board.note === null || board.note === undefined ? null : el("div", null, board.note),
 						// A missing file or section is the one state the person can fix
 						// from here, so the button appears exactly then.
 						board.creatable === true
 							? el("div", { style: { marginTop: "6px" } },
 								button(t("form.gateCreate"), () => void checkBoard({ create: true }), { compact: true, disabled: boardBusy }))
-							: null)) : null,
+							: null,
+						// The counts are a point in time; say which one.
+						board.at === undefined ? null : el("div", { style: { marginTop: "4px", color: "var(--dsw-alias-label-tertiary)", fontSize: "11px" } },
+							fill(t("form.gateChecked"), { time: formatAt(board.at) ?? "" })))) : null,
 				// Human-only switch: the Host rejects this flag from any caller
 				// without an authenticated browser session, so it cannot be set by
 				// the AI, a script, or a curl.
