@@ -28,9 +28,11 @@
 // store/scheduler/cron code.
 const REV = new URL(import.meta.url).search;
 const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, MAX_PROMPT_CHARS, normalizeAllowedModels, normalizeJob, openJobStore } = await import('./store.js' + REV);
+const { normalizeGate } = await import('./store.js' + REV);
 const { createScheduler } = await import('./scheduler.js' + REV);
 const { runJob } = await import('./runner.js' + REV);
 const { describeCron, upcoming } = await import('./cron.js' + REV);
+const { createBoard, DEFAULT_GATE_FILE, DEFAULT_GATE_HEADING, gateVerdict, inspectBoard } = await import('./gate.js' + REV);
 
 /** Cordis service name for this plugin. */
 export const name = 'cron-schedule';
@@ -51,6 +53,14 @@ export const SETTINGS_PATH = '/api/cron-schedule/settings';
 
 /** Exact route listing the chats a job may be bound to. */
 export const CHATS_PATH = '/api/cron-schedule/chats';
+
+/**
+ * Prefix under which one job's task board is addressed.
+ *
+ * `GET  …/board/<id>`   — read the board a gate points at (column, counts).
+ * `POST …/board/<id>`   — create the file when it is missing, or refresh.
+ */
+export const BOARD_PATH_PREFIX = '/api/cron-schedule/board/';
 
 /**
  * Exact route describing this plugin to a model or a person in one request.
@@ -248,7 +258,10 @@ export async function apply(ctx, config = {}) {
 		},
 		// A run without its own model follows the model used most recently in a
 		// chat; that resolution is async, so it is awaited here and handed in.
-		run: async (job, options) => runJob(runtime, job, { ...options, fallbackModel: await preferredModel() })
+		run: async (job, options) => runJob(runtime, job, { ...options, fallbackModel: await preferredModel() }),
+		// The task gate: a job with `gate` set only starts the model when its
+		// board column actually holds open tasks.
+		precheck: (job) => gateVerdict(job)
 	});
 
 	ctx.effect(() => () => {
@@ -446,6 +459,7 @@ export async function apply(ctx, config = {}) {
 			workspacePath: base.workspacePath,
 			prompt: base.prompt,
 			...(base.initialPrompt === null || base.initialPrompt === undefined ? {} : { initialPrompt: base.initialPrompt }),
+			...(base.gate === null || base.gate === undefined ? {} : { gate: { file: base.gate.file, heading: base.gate.heading } }),
 			enabled: base.enabled,
 			alwaysNewChat: base.alwaysNewChat === true,
 			overdue: base.overdue,
@@ -454,7 +468,8 @@ export async function apply(ctx, config = {}) {
 			...(base.nextRunAt === null ? {} : { nextRunAt: base.nextRunAt }),
 			...(base.lastStatus === null ? {} : { lastStatus: base.lastStatus }),
 			...(base.lastSessionId === null ? {} : { lastSessionId: base.lastSessionId }),
-			...(base.lastError === null ? {} : { lastError: base.lastError })
+			...(base.lastError === null ? {} : { lastError: base.lastError }),
+			...(base.lastNote === null || base.lastNote === undefined ? {} : { lastNote: base.lastNote })
 		};
 	}
 
@@ -854,14 +869,15 @@ export async function apply(ctx, config = {}) {
 				workspacePath: 'absolute directory the chat runs in (created when missing)',
 				prompt: `string, 1–${MAX_PROMPT_CHARS} chars — the task delivered on every run`,
 				initialPrompt: `string, 0–${MAX_PROMPT_CHARS} chars, optional — our setup brief, delivered once into the chat the job creates (before the first task); absent means the task alone`,
+				gate: 'object | null, optional — only run when a Markdown board has open tasks. { file, heading }: `file` is relative to workspacePath (default "TODO.md"), `heading` is the level-two section (default "Incoming"). With an empty column the run is recorded as `skipped` and no chat is started; a missing file or renamed column is `failed`, never a silent skip.',
 				enabled: 'boolean (default true) — whether the schedule fires',
 				model: '{ provider, model } | null — must be an entry of cron_models / the allow-list; null means the deployment default',
 				alwaysNewChat: 'boolean (default false) — every run starts a fresh chat; otherwise the first run creates one and later runs continue it',
 				sessionId: 'string | null — bind an existing chat (from cron_chats); ignored while alwaysNewChat is on',
 				autoCatchUp: 'boolean — HUMAN ONLY: replay runs missed while DSH was down (the AI tools drop this field)'
 			},
-			fields: ['id', 'name', 'expression', 'description', 'timeZone', 'workspacePath', 'prompt', 'initialPrompt', 'enabled', 'alwaysNewChat', 'overdue', 'missed', 'sessionId', 'nextRunAt', 'lastStatus', 'lastSessionId', 'lastError'],
-			lastStatus: ['started', 'succeeded', 'failed'],
+			fields: ['id', 'name', 'expression', 'description', 'timeZone', 'workspacePath', 'prompt', 'initialPrompt', 'gate', 'enabled', 'alwaysNewChat', 'overdue', 'missed', 'sessionId', 'nextRunAt', 'lastStatus', 'lastSessionId', 'lastError', 'lastNote'],
+			lastStatus: ['started', 'succeeded', 'skipped', 'failed'],
 			endpoints: [
 				{ method: 'GET', path: MANIFEST_PATH, humanOnly: false, purpose: 'this description' },
 				{ method: 'GET', path: JOBS_PATH, humanOnly: false, purpose: 'list schedules with their next run and last outcome' },
@@ -872,6 +888,8 @@ export async function apply(ctx, config = {}) {
 				{ method: 'DELETE', path: `${JOB_PATH_PREFIX}<id>`, humanOnly: false, purpose: 'delete a schedule' },
 				{ method: 'POST', path: `${JOB_PATH_PREFIX}preview`, humanOnly: false, purpose: '{ expression, timeZone } -> description + next occurrences' },
 				{ method: 'GET', path: CHATS_PATH, humanOnly: false, purpose: 'existing chats a schedule may post into' },
+				{ method: 'GET', path: `${BOARD_PATH_PREFIX}<id>`, humanOnly: false, purpose: 'what the task gate would see now: column, open count, verdict' },
+				{ method: 'POST', path: `${BOARD_PATH_PREFIX}<id>`, humanOnly: false, purpose: 're-check the board; { create: true } creates the missing file (never overwrites one)' },
 				{ method: 'GET', path: SETTINGS_PATH, humanOnly: false, purpose: 'model allow-list + routable catalog + default model' },
 				{ method: 'POST', path: SETTINGS_PATH, humanOnly: true, purpose: 'change the model allow-list (a person at the Web panel only)' }
 			],
@@ -881,6 +899,69 @@ export async function apply(ctx, config = {}) {
 				'Every run is synchronous from the route: when POST …/run answers, job.lastStatus is started | succeeded | failed and job.lastSessionId names the chat the run reached.'
 			]
 		});
+	};
+
+	/**
+	 * The board route: what the gate would see for one job, and how to fix a
+	 * missing file.
+	 *
+	 * The panel needs this for two things a run cannot do for it: show the column
+	 * as it stands (so a person can see *why* nothing runs), and create the file
+	 * from a button when the path is wrong or the board does not exist yet.
+	 */
+	const boardHandler = async (req, res) => {
+		try {
+			if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') {
+				res.writeHead(405, { allow: 'GET, HEAD, POST' });
+				res.end();
+				return;
+			}
+			const rest = new URL(req.url ?? '/', 'http://dsh.invalid').pathname.startsWith(BOARD_PATH_PREFIX)
+				? new URL(req.url ?? '/', 'http://dsh.invalid').pathname.slice(BOARD_PATH_PREFIX.length)
+				: '';
+			const id = decodeURIComponent(rest.split('/')[0] ?? '');
+			const body = req.method === 'POST' ? await readJson(req) : {};
+			// `draft` is the pseudo-id the form uses before the schedule exists: it
+			// carries the folder in the body, so a gate can be checked and its file
+			// created while the person is still filling the form in.
+			const stored = id === '' || id === 'draft' ? undefined : store.get(id);
+			if (id !== 'draft' && stored === undefined) {
+				sendJson(res, 404, { error: `unknown job "${id}"` });
+				return;
+			}
+			const workspacePath = stored === undefined ? String(body.workspacePath ?? '').trim() : stored.workspacePath;
+			if (workspacePath === '') throw new JobInputError('workspacePath is required to check a board for an unsaved schedule', 'workspacePath');
+			// An absent gate is legal: the panel still shows the configured (or
+			// default) path so a person can turn the box on and point it anywhere.
+			const requested = stored?.gate ?? { file: DEFAULT_GATE_FILE, heading: DEFAULT_GATE_HEADING };
+			const target = {
+				workspacePath,
+				file: typeof body.file === 'string' && body.file.trim() !== '' ? body.file : requested.file,
+				heading: typeof body.heading === 'string' && body.heading.trim() !== '' ? body.heading : requested.heading
+			};
+			const board = req.method === 'POST' && body.create === true
+				? await createBoard(target)
+				: await inspectBoard(target);
+			sendJson(res, 200, {
+				jobId: stored?.id ?? null,
+				workspacePath,
+				gate: stored?.gate ?? null,
+				...board,
+				// The verdict the next run would reach, so the panel can explain
+				// "why nothing runs" in the same words the log uses.
+				verdict: board.error !== undefined ? 'error'
+					: !board.exists ? 'missing'
+						: !board.found ? 'no-section'
+							: board.open === 0 ? 'empty' : 'ready'
+			});
+		} catch (error) {
+			if (error instanceof JobInputError) {
+				sendJson(res, 400, { error: error.message, field: error.field });
+				return;
+			}
+			ctx.logger.error(error);
+			sendJson(res, 500, { error: String(error?.message ?? error) });
+		}
 	};
 
 	const chatsHandler = async (req, res) => {
@@ -911,6 +992,11 @@ export async function apply(ctx, config = {}) {
 		path: MANIFEST_PATH,
 		handler: manifestHandler
 	}), 'cron-schedule: manifest route');
+	ctx.effect(() => ctx.webServer.register({
+		kind: 'prefix',
+		path: BOARD_PATH_PREFIX.slice(0, -1),
+		handler: boardHandler
+	}), 'cron-schedule: board route');
 	ctx.effect(() => ctx.webServer.register({
 		kind: 'exact',
 		path: SETTINGS_PATH,
@@ -970,15 +1056,22 @@ function registerTools(ctx, deps) {
 				workspacePath: { type: 'string' },
 				prompt: { type: 'string' },
 				initialPrompt: { type: 'string' },
+				gate: {
+					type: 'object',
+					additionalProperties: false,
+					required: ['file', 'heading'],
+					properties: { file: { type: 'string' }, heading: { type: 'string' } }
+				},
 				enabled: { type: 'boolean' },
 				alwaysNewChat: { type: 'boolean' },
 				overdue: { type: 'boolean' },
 				missed: { type: 'array', items: { type: 'number' } },
 				sessionId: { type: 'string' },
 				nextRunAt: { type: 'number' },
-				lastStatus: { type: 'string', enum: ['started', 'succeeded', 'failed'] },
+				lastStatus: { type: 'string', enum: ['started', 'succeeded', 'skipped', 'failed'] },
 				lastSessionId: { type: 'string' },
-				lastError: { type: 'string' }
+				lastError: { type: 'string' },
+				lastNote: { type: 'string' }
 			}
 		};
 		const listOutput = {
@@ -1019,6 +1112,15 @@ function registerTools(ctx, deps) {
 				workspacePath: { type: 'string', required: true, description: 'Absolute directory the new chat runs in. It is created when missing.' },
 				prompt: { type: 'string', required: true, description: 'The task text delivered to the AI on every run.' },
 				initialPrompt: { type: 'string', description: 'Optional setup brief (who the bot is, standing rules, paths). Delivered ONCE into the chat the job creates, before the first task — use it so the task text does not have to repeat the whole brief every run.' },
+				gate: {
+					type: 'object',
+					additionalProperties: false,
+					description: 'Only run when a Markdown board has open tasks. Omit for a plain timer. Pass { file, heading } to point at a board: `file` is relative to workspacePath (default "TODO.md"), `heading` is the level-two section to count (default "Incoming"). Checkboxes under that heading decide: at least one `- [ ]` means the model runs, otherwise the run is recorded as skipped and no chat is started.',
+					properties: {
+						file: { type: 'string', description: 'Board file, relative to workspacePath (or absolute).' },
+						heading: { type: 'string', description: 'Level-two heading (`## …`) to count open tasks in.' }
+					}
+				},
 				timeZone: { type: 'string', description: 'IANA time zone for the expression, e.g. "Europe/Moscow". Defaults to UTC.' },
 				enabled: { type: 'boolean', description: 'Whether the schedule is active. Defaults to true.' },
 				model: {
@@ -1044,12 +1146,14 @@ function registerTools(ctx, deps) {
 						nextRunAt: { type: 'number' },
 						alwaysNewChat: { type: 'boolean' },
 						initialPrompt: { type: 'string' },
+						gateFile: { type: 'string' },
+						gateHeading: { type: 'string' },
 						sessionId: { type: 'string' },
 						provider: { type: 'string' },
 						model: { type: 'string' }
 					}
 				},
-				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}${value.initialPrompt === undefined ? '' : ' with a setup brief sent once into its new chat'}, next run ${value.nextRunAt === undefined ? 'never' : new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
+				render: (_args, value) => text(`Created cron schedule ${value.id} ("${value.name}"): ${value.expression}${value.initialPrompt === undefined ? '' : ' with a setup brief sent once into its new chat'}, next run ${value.nextRunAt === undefined ? 'never' : new Date(value.nextRunAt).toISOString()} in ${value.workspacePath}${value.model === undefined ? '' : ` on ${value.provider}/${value.model}`}. ${value.gateFile === undefined ? '' : ` It only runs when "${value.gateHeading}" in ${value.gateFile} has open tasks.`}${value.alwaysNewChat === true ? 'Every run starts a new chat.' : (value.sessionId === undefined ? 'The first run creates a chat and later runs continue it.' : `Runs post into chat ${value.sessionId}.`)}`)
 			},
 			async execute(args, exec) {
 				const source = { ...args };
@@ -1078,6 +1182,7 @@ function registerTools(ctx, deps) {
 					workspacePath: fresh.workspacePath,
 					alwaysNewChat: fresh.alwaysNewChat === true,
 					...(fresh.initialPrompt === undefined ? {} : { initialPrompt: fresh.initialPrompt }),
+					...(fresh.gate === undefined ? {} : { gateFile: fresh.gate.file, gateHeading: fresh.gate.heading }),
 					...(fresh.nextRunAt === undefined ? {} : { nextRunAt: fresh.nextRunAt }),
 					...(fresh.sessionId === undefined ? {} : { sessionId: fresh.sessionId }),
 					...(fresh.model === undefined ? {} : { provider: fresh.model.provider, model: fresh.model.model })

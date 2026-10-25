@@ -200,7 +200,16 @@ ok('all dictionaries have the same keys', zhKeys.length === enKeys.length && ruK
 const placeholders = (value) => [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort().join(',');
 const ruPlaceholderMismatch = enKeys.filter((key) => placeholders(dictionary.dicts.en[key]) !== placeholders(dictionary?.dicts.ru[key] ?? ''));
 ok('russian keeps every placeholder', ruPlaceholderMismatch.length === 0, ruPlaceholderMismatch.join(', '));
-ok('russian is really translated', ruKeys.filter((key) => dictionary.dicts.ru[key] !== dictionary.dicts.en[key]).length === enKeys.length, 'untranslated keys present');
+// Every English sentence must be translated. A bare technical token may stay
+// identical on purpose: a file name ("TODO.md") and a default heading name
+// ("Incoming") are what the person types into their board, not prose.
+// A literal the person types into their own board keeps its spelling: a file
+// name ("TODO.md") and the default heading ("Incoming"). Prose is what must be
+// translated, and prose means something other than one verbatim literal.
+const VERBATIM = new Set(['TODO.md', 'Incoming']);
+const needsTranslation = (value) => !VERBATIM.has(value);
+const untranslated = enKeys.filter((key) => needsTranslation(dictionary.dicts.en[key]) && dictionary.dicts.ru[key] === dictionary.dicts.en[key]);
+ok('russian is really translated', untranslated.length === 0, untranslated.join(', '));
 // Russian is a language pack, not a built-in: the shell ships only zh and en.
 const russianLanguage = host.languages.find((language) => language.id === 'ru');
 ok('russian is registered as a language pack', russianLanguage !== undefined, JSON.stringify(host.languages));
@@ -212,6 +221,9 @@ for (const required of [
 	'form.initialPrompt', 'form.initialPromptHint', 'form.promptHint',
 	'form.save', 'form.saving', 'form.cancel',
 	'form.autoCatchUp', 'form.autoCatchUpHint', 'column.auto', 'column.autoOn', 'column.autoAsk',
+	'form.gate', 'form.gateHint', 'form.gateFile', 'form.gateHeading', 'form.gateCheck', 'form.gateCreate',
+	'form.gateReady', 'form.gateEmpty', 'form.gateMissing', 'form.gateNoSection', 'form.gateError',
+	'column.gate', 'column.gateOn', 'column.gateOff', 'job.skipped',
 	'form.model', 'form.modelDefault', 'form.modelRestricted', 'column.model',
 	'form.chat', 'form.chatNew', 'form.chatPick', 'form.chatPickPlaceholder', 'form.chatBound', 'form.chatIgnored',
 	'form.alwaysNewChat', 'form.alwaysNewChatHint', 'column.chat', 'column.chatNew', 'column.chatUnbound',
@@ -263,6 +275,19 @@ ok('the form offers a setup brief', source.includes('t("form.initialPrompt")') &
 ok('the brief is prefilled from the job', source.includes('initialPrompt: job.initialPrompt ?? ""'));
 ok('the brief is sent with the job', source.includes('initialPrompt: draft.initialPrompt.trim() === "" ? null : draft.initialPrompt'));
 ok('the task field is named as the every-run text', source.includes('"form.prompt": "Task on every run"'));
+// --- the optional task gate ---
+ok('the form offers the board gate', source.includes('t("form.gate")') && source.includes('checked: draft.gate === true'));
+ok('the gate checkbox only sends when ticked', source.includes('gate: draft.gate === true'));
+ok('the gate settings appear only while it is on', source.includes('draft.gate === true ? el("div"') && source.includes('const on = event.target.checked;'));
+ok('the gate has a file field', source.includes('onChange: (event) => set({ gateFile: event.target.value })'));
+ok('the gate has a heading field', source.includes('onChange: (event) => set({ gateHeading: event.target.value })'));
+ok('the gate is checked through the Host, not the browser', source.includes('BOARD_URL') && source.includes('await callHost("POST", `${BOARD_URL}/draft`'));
+ok('the check carries the folder for an unsaved schedule', source.includes('workspacePath: draft.workspacePath.trim()'));
+ok('a missing board offers the create button', source.includes('board.creatable === true') && source.includes('create: true'));
+ok('the checkbox runs a check immediately', source.includes('if (on) void checkBoard();'));
+ok('every verdict has its own sentence', ['ready', 'empty', 'missing', 'no-section'].every((verdict) => source.includes(`payload.verdict === "${verdict}"`)));
+ok('the table shows whether a job is gated', source.includes('t("column.gateOn")') && source.includes('t("column.gateOff")'));
+ok('a skipped row explains itself', source.includes('job.lastStatus === "skipped" && typeof job.lastNote === "string"'));
 ok('form has a model dropdown', source.includes('t("form.model")') && source.includes('models: modelChoices'));
 ok('dropdown offers the deployment default', source.includes('t("form.modelDefault")'));
 ok('dropdown lists catalog entries', source.includes('`${entry.name} — ${entry.provider}/${entry.model}`'));

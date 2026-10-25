@@ -16,8 +16,9 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "test": "node scripts/cron-test.mjs && node scripts/store-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test": "node scripts/cron-test.mjs && node scripts/gate-test.mjs && node scripts/store-test.mjs && node scripts/host-test.mjs && node scripts/client-smoke.mjs",
     "test:cron": "node scripts/cron-test.mjs",
+    "test:gate": "node scripts/gate-test.mjs",
     "test:host": "node scripts/host-test.mjs",
     "test:client": "node scripts/client-smoke.mjs"
   },

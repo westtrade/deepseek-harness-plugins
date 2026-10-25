@@ -21,6 +21,8 @@ window.__ModuleLoader__.load({
 		const SETTINGS_URL = "/api/cron-schedule/settings";
 		/** Host route listing the chats a schedule can post into. */
 		const CHATS_URL = "/api/cron-schedule/chats";
+		/** Host route answering what the task gate would see, and creating the file. */
+		const BOARD_URL = "/api/cron-schedule/board";
 		/** Settings namespace the Host registers; also this card's slot key. */
 		const SETTINGS_NAMESPACE = "cron-schedule";
 		/** Poll interval while the panel is open. */
@@ -86,6 +88,26 @@ window.__ModuleLoader__.load({
 			"form.modelDefault": "Default",
 			"column.modelInherited": "last used",
 			"form.modelRestricted": "Only models allowed in Settings can be picked",
+			"form.gate": "Run only when the board has tasks",
+			"form.gateHint": "Before each run, check one Markdown column for open checkboxes. If it is empty, the run is recorded as skipped and the AI is not started at all.",
+			"form.gateFile": "Board file",
+			"form.gateFilePlaceholder": "TODO.md",
+			"form.gateFileHint": "Relative to the working folder (or an absolute path).",
+			"form.gateHeading": "Column heading",
+			"form.gateHeadingPlaceholder": "Incoming",
+			"form.gateHeadingHint": "A second-level heading in that file, e.g. ## Incoming.",
+			"form.gateCheck": "Check board",
+			"form.gateCreate": "Create file",
+			"form.gateReady": "{open} open task(s) under \"{heading}\" — the run will start.",
+			"form.gateEmpty": "No open tasks under \"{heading}\" — the run will be skipped, the AI will not start.",
+			"form.gateMissing": "File not found: {path}",
+			"form.gateNoSection": "No \"{heading}\" section in {path}",
+			"form.gateError": "Cannot read {path}: {message}",
+			"form.gateChecked": "Checked {time}",
+			"column.gate": "Board gate",
+			"column.gateOn": "board",
+			"column.gateOff": "always",
+			"job.skipped": "Skipped {time}: {note}",
 			"form.autoCatchUp": "Catch up missed runs after a restart",
 			"form.autoCatchUpHint": "On: runs missed while DSH was off start by themselves at the next launch. Off: they wait for you to press Run. Only a person can change this.",
 			"column.model": "Model",
@@ -192,6 +214,26 @@ window.__ModuleLoader__.load({
 			"form.modelDefault": "По умолчанию",
 			"column.modelInherited": "последняя использованная",
 			"form.modelRestricted": "Можно выбрать только модели, разрешённые в настройках",
+			"form.gate": "Запускать, только если на доске есть задачи",
+			"form.gateHint": "Перед каждым запуском проверить один столбец Markdown на наличие открытых галочек. Если он пуст, запуск помечается пропущенным, а ИИ вообще не стартует.",
+			"form.gateFile": "Файл доски",
+			"form.gateFilePlaceholder": "TODO.md",
+			"form.gateFileHint": "Путь относительно рабочей папки (или абсолютный).",
+			"form.gateHeading": "Заголовок столбца",
+			"form.gateHeadingPlaceholder": "Incoming",
+			"form.gateHeadingHint": "Заголовок второго уровня в этом файле, например ## Incoming.",
+			"form.gateCheck": "Проверить доску",
+			"form.gateCreate": "Создать файл",
+			"form.gateReady": "Открытых задач в «{heading}»: {open} — запуск состоится.",
+			"form.gateEmpty": "В «{heading}» нет открытых задач — запуск будет пропущен, ИИ не стартует.",
+			"form.gateMissing": "Файл не найден: {path}",
+			"form.gateNoSection": "В файле {path} нет раздела «{heading}»",
+			"form.gateError": "Не удалось прочитать {path}: {message}",
+			"form.gateChecked": "Проверено {time}",
+			"column.gate": "Проверка доски",
+			"column.gateOn": "доска",
+			"column.gateOff": "всегда",
+			"job.skipped": "Пропущен {time}: {note}",
 			"form.autoCatchUp": "Догонять пропущенные запуски после перезапуска",
 			"form.autoCatchUpHint": "Вкл.: пропущенные, пока DSH был выключен, запуски стартуют сами при следующем запуске. Выкл.: ждут нажатия «Запустить». Менять это может только человек.",
 			"column.model": "Модель",
@@ -290,6 +332,26 @@ window.__ModuleLoader__.load({
 			"form.modelDefault": "默认",
 			"column.modelInherited": "上次使用",
 			"form.modelRestricted": "只能选择在设置中允许的模型",
+			"form.gate": "仅当看板有待办任务时运行",
+			"form.gateHint": "每次运行前检查 Markdown 中某一列的未完成勾选项。若该列为空，本次运行记为跳过，不会启动 AI。",
+			"form.gateFile": "看板文件",
+			"form.gateFilePlaceholder": "TODO.md",
+			"form.gateFileHint": "相对于工作目录（也可写绝对路径）。",
+			"form.gateHeading": "列标题",
+			"form.gateHeadingPlaceholder": "Incoming",
+			"form.gateHeadingHint": "该文件中的二级标题，例如 ## Incoming。",
+			"form.gateCheck": "检查看板",
+			"form.gateCreate": "创建文件",
+			"form.gateReady": "「{heading}」中有 {open} 个未完成任务——将开始运行。",
+			"form.gateEmpty": "「{heading}」中没有未完成任务——本次运行将被跳过，不会启动 AI。",
+			"form.gateMissing": "找不到文件：{path}",
+			"form.gateNoSection": "{path} 中没有「{heading}」小节",
+			"form.gateError": "无法读取 {path}：{message}",
+			"form.gateChecked": "检查于 {time}",
+			"column.gate": "看板检查",
+			"column.gateOn": "看板",
+			"column.gateOff": "总是",
+			"job.skipped": "已跳过 {time}：{note}",
 			"form.autoCatchUp": "重启后自动补跑错过的任务",
 			"form.autoCatchUpHint": "开启：DSH 关闭期间错过的运行会在下次启动时自行开始。关闭：等待你点击「补跑」。只有人可以修改此项。",
 			"column.model": "模型",
@@ -512,6 +574,28 @@ window.__ModuleLoader__.load({
 			return payload;
 		}
 		/**
+		 * Turn a board-check answer into the sentence the form shows.
+		 *
+		 * The mapping is deliberately one-to-one with {@link gateVerdict} on the
+		 * Host: `ready` promises a run, `empty` warns that the next run is skipped,
+		 * `missing` / `no-section` / `error` are the three states a person can fix
+		 * or must be told about. Only the first two offer a button, and `missing`
+		 * offers it once the folder is known.
+		 *
+		 * @param payload - the Host answer.
+		 * @param t - copy lookup.
+		 * @returns `{ tone, text, creatable }`.
+		 */
+		function describeBoard(payload, t) {
+			const heading = payload.heading ?? "Incoming";
+			const path = payload.resolvedPath ?? payload.file ?? "";
+			if (payload.verdict === "ready") return { tone: "ok", text: fill(t("form.gateReady"), { open: payload.open, heading }), creatable: false };
+			if (payload.verdict === "empty") return { tone: "warn", text: fill(t("form.gateEmpty"), { heading }), creatable: false };
+			if (payload.verdict === "missing") return { tone: "error", text: fill(t("form.gateMissing"), { path }), creatable: true };
+			if (payload.verdict === "no-section") return { tone: "error", text: fill(t("form.gateNoSection"), { heading, path }), creatable: true };
+			return { tone: "error", text: fill(t("form.gateError"), { path, message: payload.error ?? "" }), creatable: false };
+		}
+		/**
 		 * Start a run and follow it into the chat it wrote into.
 		 *
 		 * `POST …/run` answers with the stored job once the run has settled, so
@@ -580,7 +664,9 @@ window.__ModuleLoader__.load({
 							}
 						}, job.lastStatus === "failed" && typeof job.lastError === "string"
 							? t("job.lastFailed", { message: job.lastError })
-							: t("job.last", { status: job.lastStatus, time: last ?? "" }))
+							: job.lastStatus === "skipped" && typeof job.lastNote === "string"
+								? fill(t("job.skipped"), { note: job.lastNote, time: last ?? "" })
+								: t("job.last", { status: job.lastStatus, time: last ?? "" }))
 						: null),
 				el("td", { style: { padding: "8px 10px", verticalAlign: "top", color: "var(--dsw-alias-label-secondary)" } },
 					el("div", null, job.expression),
@@ -618,6 +704,17 @@ window.__ModuleLoader__.load({
 						? t("form.modelDefault")
 						: `${defaultModel.model} (${t("column.modelInherited")})`)
 					: `${job.model.provider}/${job.model.model}`),
+				el("td", {
+					style: {
+						padding: "8px 10px",
+						verticalAlign: "top",
+						fontSize: "12px",
+						color: job.gate !== null && job.gate !== undefined ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)"
+					},
+					title: job.gate === null || job.gate === undefined ? t("form.gateHint") : `${job.gate.file} · ## ${job.gate.heading}`
+				}, job.gate === null || job.gate === undefined
+					? t("column.gateOff")
+					: t("column.gateOn")),
 				el("td", {
 					style: {
 						padding: "8px 10px",
@@ -726,6 +823,9 @@ window.__ModuleLoader__.load({
 					workspacePath: job.workspacePath,
 					prompt: job.prompt,
 					initialPrompt: job.initialPrompt ?? "",
+					gate: job.gate !== null && job.gate !== undefined,
+					gateFile: job.gate?.file ?? "TODO.md",
+					gateHeading: job.gate?.heading ?? "Incoming",
 					autoCatchUp: job.autoCatchUp === true,
 					alwaysNewChat: job.alwaysNewChat === true,
 					sessionId: job.sessionId ?? "",
@@ -739,6 +839,10 @@ window.__ModuleLoader__.load({
 					workspacePath: "",
 					prompt: "",
 					initialPrompt: "",
+					// Off by default: a plain timer starts the model every time.
+					gate: false,
+					gateFile: "TODO.md",
+					gateHeading: "Incoming",
 					// Off by default: a new schedule asks before replaying downtime.
 					autoCatchUp: false,
 					// Off by default: a repeating schedule reuses the chat it creates.
@@ -748,6 +852,41 @@ window.__ModuleLoader__.load({
 				});
 			const [busy, setBusy] = react.useState(false);
 			const [preview, setPreview] = react.useState(null);
+			/**
+			 * The last board check: `null` before the first one, then the sentence
+			 * to show, its tone, and whether the person can fix it with a button.
+			 */
+			const [board, setBoard] = react.useState(null);
+			const [boardBusy, setBoardBusy] = react.useState(false);
+			/**
+			 * Ask the Host what the gate would see right now.
+			 *
+			 * The check runs Host-side, not in the browser: the panel cannot read
+			 * the file system, and the answer must use the same parser as the run —
+			 * otherwise the card could promise a run that the scheduler then skips.
+			 *
+			 * @param options - `create` to make the missing file instead of reading.
+			 */
+			const checkBoard = async (options = {}) => {
+				setBoardBusy(true);
+				try {
+					const payload = await callHost("POST", `${BOARD_URL}/draft`, {
+						// The pseudo-id has no stored record, so the folder travels with
+						// the check; for a stored job the Host ignores this field.
+						workspacePath: draft.workspacePath.trim(),
+						file: draft.gateFile.trim(),
+						heading: draft.gateHeading.trim(),
+						create: options.create === true
+					});
+					setBoard(describeBoard(payload, t));
+				} catch (error) {
+					// A brand-new schedule has no id yet, so the Host cannot resolve its
+					// workspace; explain the gate without pretending to have checked it.
+					setBoard({ tone: "warn", text: messageOf(error) ?? String(error), creatable: false });
+				} finally {
+					setBoardBusy(false);
+				}
+			};
 			/**
 			 * Whether the folder-scoped chat list is being fetched.
 			 *
@@ -844,6 +983,11 @@ window.__ModuleLoader__.load({
 						// `null` clears the brief: an emptied field means "just send the
 						// task", not "keep the old text".
 						initialPrompt: draft.initialPrompt.trim() === "" ? null : draft.initialPrompt,
+						// `null` removes the gate: the checkbox turning off must mean
+						// "always run", not "keep the old board setting".
+						gate: draft.gate === true
+							? { file: draft.gateFile.trim(), heading: draft.gateHeading.trim() }
+							: null,
 						// Sent only from here: the Host refuses this flag from any
 						// caller that is not an authenticated browser session, so the
 						// panel is the one place it can be turned on.
@@ -1045,6 +1189,72 @@ window.__ModuleLoader__.load({
 							t("form.alwaysNewChat")),
 						el("span", { style: { display: "block", color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } },
 							t("form.alwaysNewChatHint")))),
+				// --- the task gate: an optional board check before every run ---
+				el("label", {
+					style: { display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" },
+					title: t("form.gateHint")
+				},
+					el("input", {
+						type: "checkbox",
+						checked: draft.gate === true,
+						style: { marginTop: "2px", flex: "none", accentColor: "var(--dsw-alias-interactive-bg-primary)" },
+						onChange: (event) => {
+							const on = event.target.checked;
+							set({ gate: on });
+							if (on) void checkBoard();
+						}
+					}),
+					el("span", { style: { minWidth: 0 } },
+						el("span", { style: { display: "block", color: "var(--dsw-alias-label-secondary)", fontSize: "13px", lineHeight: "20px" } },
+							t("form.gate")),
+						el("span", { style: { display: "block", color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px" } },
+							t("form.gateHint")))),
+				// The settings exist only while the box is on: an unchecked gate is
+				// "a plain timer", and showing a file path for it would be a lie.
+				draft.gate === true ? el("div", {
+					style: {
+						display: "flex",
+						flexDirection: "column",
+						gap: "8px",
+						padding: "10px 12px",
+						borderRadius: "10px",
+						border: "1px solid var(--dsw-alias-border-l4)",
+						background: "var(--dsw-alias-bg-layer-3)"
+					}
+				},
+					el("div", { style: { display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" } },
+						label(t("form.gateFile"), el("input", {
+							value: draft.gateFile,
+							placeholder: t("form.gateFilePlaceholder"),
+							style: { ...inputStyle, minWidth: "240px" },
+							onChange: (event) => set({ gateFile: event.target.value })
+						})),
+						label(t("form.gateHeading"), el("input", {
+							value: draft.gateHeading,
+							placeholder: t("form.gateHeadingPlaceholder"),
+							style: { ...inputStyle, minWidth: "180px" },
+							onChange: (event) => set({ gateHeading: event.target.value })
+						})),
+						el("div", { style: { display: "flex", gap: "6px" } },
+							button(boardBusy ? t("form.gateCheck") + "…" : t("form.gateCheck"), () => void checkBoard(), { compact: true, disabled: boardBusy }),
+							el("span", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "11px", lineHeight: "16px", alignSelf: "center" } },
+								t("form.gateFileHint")))),
+					board === null ? null : el("div", {
+						style: {
+							fontSize: "12px",
+							lineHeight: "18px",
+							color: board.tone === "ok" ? "var(--dsw-alias-label-secondary)"
+								: board.tone === "warn" ? "var(--dsw-alias-label-secondary)"
+									: "var(--dsw-alias-label-error)"
+						}
+					},
+						el("div", null, board.text),
+						// A missing file or section is the one state the person can fix
+						// from here, so the button appears exactly then.
+						board.creatable === true
+							? el("div", { style: { marginTop: "6px" } },
+								button(t("form.gateCreate"), () => void checkBoard({ create: true }), { compact: true, disabled: boardBusy }))
+							: null)) : null,
 				// Human-only switch: the Host rejects this flag from any caller
 				// without an authenticated browser session, so it cannot be set by
 				// the AI, a script, or a curl.
@@ -1176,7 +1386,7 @@ window.__ModuleLoader__.load({
 								: el("div", { style: { border: "1px solid var(--dsw-alias-border-l4)", borderRadius: "12px", overflow: "hidden" } },
 									el("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: "13px" } },
 										el("thead", null, el("tr", { style: { background: "var(--dsw-alias-bg-elevated, transparent)" } },
-											[t("column.name"), t("column.when"), t("column.next"), t("column.chat"), t("column.model"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
+											[t("column.name"), t("column.when"), t("column.next"), t("column.chat"), t("column.model"), t("column.gate"), t("column.auto"), t("column.workspace"), t("column.actions")].map((heading) => el("th", {
 												key: heading,
 												style: {
 													textAlign: "left",
@@ -1202,7 +1412,7 @@ window.__ModuleLoader__.load({
 											if (job.id !== editingId) return [row];
 											// The editor renders in place, directly under its own row.
 											return [row, el("tr", { key: `${job.id}-editor` },
-												el("td", { colSpan: 8, style: { padding: "0 10px 12px" } },
+												el("td", { colSpan: 9, style: { padding: "0 10px 12px" } },
 													el(JobForm, {
 														t,
 														pickDirectory,

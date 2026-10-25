@@ -23,6 +23,21 @@ const { CronSyntaxError, describeCron, isValidTimeZone, nextOccurrence, parseCro
 /** Longest accepted prompt, in characters. */
 export const MAX_PROMPT_CHARS = 8000;
 
+/**
+ * Default board file, relative to the job's workspace.
+ *
+ * `TODO.md` at the project root is what the person writes anyway; a board kept
+ * elsewhere (`.vscode/<project>/TODO.md`) is a per-job setting.
+ */
+export const DEFAULT_GATE_FILE = 'TODO.md';
+
+/** Default column the gate counts. */
+export const DEFAULT_GATE_HEADING = 'Incoming';
+
+/** Longest accepted section heading and file path, in characters. */
+export const MAX_GATE_HEADING_CHARS = 120;
+export const MAX_GATE_FILE_CHARS = 1024;
+
 /** How many finished runs to keep per job. */
 export const MAX_RUN_HISTORY = 20;
 
@@ -173,6 +188,33 @@ export function normalizeAllowedModels(value, available) {
 }
 
 /**
+ * Normalize the optional "only run when the board has work" gate.
+ *
+ * `null`, `false` or an absent field means no gate — the run always starts the
+ * model, which is what every job written before this feature does. `true` turns
+ * the gate on with the defaults. An object carries the two settings the panel
+ * exposes, so a person can point the job at their own board file and column.
+ *
+ * @param value - raw field from the panel, a tool call, or undefined.
+ * @param base - the stored gate when this is an update.
+ * @returns `{ file, heading }`, or undefined when the gate is off.
+ * @throws {JobInputError} for a malformed value.
+ */
+export function normalizeGate(value, base) {
+	const configured = value === undefined ? base : value;
+	if (configured === undefined || configured === null || configured === false) return undefined;
+	const source = configured === true ? {} : configured;
+	if (typeof source !== 'object' || Array.isArray(source)) throw new JobInputError('gate must be an object, true, or null', 'gate');
+	const file = source.file === undefined || source.file === null
+		? (base?.file ?? DEFAULT_GATE_FILE)
+		: requireText(source.file, 'gate.file', MAX_GATE_FILE_CHARS);
+	const heading = source.heading === undefined || source.heading === null
+		? (base?.heading ?? DEFAULT_GATE_HEADING)
+		: requireText(source.heading, 'gate.heading', MAX_GATE_HEADING_CHARS);
+	return { file, heading };
+}
+
+/**
  * Validate and normalize one create/update request into a stored record.
  *
  * @param input - raw request fields (`name`, `expression`, `timeZone`,
@@ -203,6 +245,13 @@ export function normalizeJob(input, base, now, allowed, available) {
 	 * alone", which is what every job written before this field did.
 	 */
 	const initialPrompt = optionalText(source.initialPrompt === undefined ? base?.initialPrompt : source.initialPrompt, 'initialPrompt', MAX_PROMPT_CHARS);
+	/**
+	 * Whether a run must first find work in a board file.
+	 *
+	 * Optional by design: a plain timer ("send this every morning") never wants
+	 * it, while a kanban bot that drains a column wants nothing else.
+	 */
+	const gate = normalizeGate(source.gate, base?.gate);
 	if (!isValidTimeZone(timeZone)) throw new JobInputError(`unknown time zone "${timeZone}"`, 'timeZone');
 	try {
 		parseCron(expression);
@@ -254,6 +303,7 @@ export function normalizeJob(input, base, now, allowed, available) {
 		workspacePath,
 		prompt,
 		...(initialPrompt === undefined ? {} : { initialPrompt }),
+		...(gate === undefined ? {} : { gate }),
 		alwaysNewChat,
 		...(sessionId === undefined ? {} : { sessionId }),
 		enabled,
@@ -271,6 +321,7 @@ export function normalizeJob(input, base, now, allowed, available) {
 		...(base?.lastStatus === undefined ? {} : { lastStatus: base.lastStatus }),
 		...(base?.lastSessionId === undefined ? {} : { lastSessionId: base.lastSessionId }),
 		...(base?.lastError === undefined ? {} : { lastError: base.lastError }),
+		...(base?.lastNote === undefined ? {} : { lastNote: base.lastNote }),
 		missed: base?.missed ?? [],
 		runs: base?.runs ?? []
 	};
@@ -314,6 +365,7 @@ export function jobView(job, locale = 'ru', now = Date.now()) {
 		workspacePath: job.workspacePath,
 		prompt: job.prompt,
 		initialPrompt: job.initialPrompt ?? null,
+		gate: job.gate === undefined ? null : { file: job.gate.file, heading: job.gate.heading },
 		enabled: job.enabled,
 		autoCatchUp: job.autoCatchUp === true,
 		alwaysNewChat: job.alwaysNewChat === true,
@@ -326,6 +378,7 @@ export function jobView(job, locale = 'ru', now = Date.now()) {
 		lastStatus: job.lastStatus ?? null,
 		lastSessionId: job.lastSessionId ?? null,
 		lastError: job.lastError ?? null,
+		lastNote: job.lastNote ?? null,
 		missed: [...(job.missed ?? [])],
 		runs: [...(job.runs ?? [])],
 		overdue: job.enabled && job.nextRunAt !== undefined && job.nextRunAt <= now
@@ -359,6 +412,9 @@ function reviveJob(raw) {
 		workspacePath: raw.workspacePath,
 		prompt: raw.prompt,
 		...(typeof raw.initialPrompt === 'string' && raw.initialPrompt !== '' ? { initialPrompt: raw.initialPrompt } : {}),
+		...(raw.gate !== null && typeof raw.gate === 'object' && typeof raw.gate.file === 'string'
+			? { gate: { file: raw.gate.file, heading: typeof raw.gate.heading === 'string' ? raw.gate.heading : DEFAULT_GATE_HEADING } }
+			: {}),
 		enabled: raw.enabled !== false,
 		autoCatchUp: raw.autoCatchUp === true,
 		alwaysNewChat: raw.alwaysNewChat === true,
@@ -373,6 +429,7 @@ function reviveJob(raw) {
 		...(typeof raw.lastStatus === 'string' ? { lastStatus: raw.lastStatus } : {}),
 		...(typeof raw.lastSessionId === 'string' ? { lastSessionId: raw.lastSessionId } : {}),
 		...(typeof raw.lastError === 'string' ? { lastError: raw.lastError } : {}),
+		...(typeof raw.lastNote === 'string' ? { lastNote: raw.lastNote } : {}),
 		...(typeof raw.briefSessionId === 'string' ? { briefSessionId: raw.briefSessionId } : {}),
 		...(typeof raw.briefHash === 'string' ? { briefHash: raw.briefHash } : {}),
 		missed: Array.isArray(raw.missed) ? raw.missed.filter((value) => Number.isFinite(value)) : [],

@@ -21,10 +21,16 @@ export const MAX_TIMER_DELAY_MS = 2147483647;
 /** How long to wait for a run to report its session before giving up. */
 const RUN_TIMEOUT_MS = 120000;
 
-/** Outcome of one run attempt. */
+/**
+ * Outcome of one run attempt.
+ *
+ * `skipped` is the third outcome and a deliberate one: the gate found no work,
+ * so no model was started. It is neither a success (nothing ran) nor a failure
+ * (nothing broke), and the panel shows it as its own state.
+ */
 export class RunOutcome {
 	/**
-	 * @param status - `succeeded` or `failed`.
+	 * @param status - `succeeded`, `skipped`, or `failed`.
 	 * @param sessionId - the chat created for the run, when it got that far.
 	 * @param error - failure text, when it failed.
 	 */
@@ -39,8 +45,9 @@ export class RunOutcome {
  * Create the scheduler bound to one store and one run function.
  *
  * @param options - `store`, `run(job, signal)` (the chat starter), `logger`,
- *   `now` (clock seam), `onChange` (called after any stored mutation), and
- *   `setTimer`/`clearTimer` seams for tests.
+ *   `now` (clock seam), `onChange` (called after any stored mutation),
+ *   `precheck(job)` (optional gate: resolves to `{ run, status, message }`
+ *   before the model is started), and `setTimer`/`clearTimer` seams for tests.
  * @returns the scheduler handle.
  */
 export function createScheduler(options) {
@@ -51,6 +58,7 @@ export function createScheduler(options) {
 	const onChange = options.onChange ?? (() => {});
 	const setTimer = options.setTimer ?? ((callback, delay) => setTimeout(callback, delay));
 	const clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
+	const precheck = options.precheck ?? (() => ({ run: true }));
 	let timer;
 	let stopped = false;
 	let running = false;
@@ -107,6 +115,42 @@ export function createScheduler(options) {
 			inFlight.delete(id);
 			return;
 		}
+		/**
+		 * Gate the iteration before the model is touched.
+		 *
+		 * A bot that drains one kanban column has nothing to do most of the time;
+		 * starting a chat anyway costs tokens and leaves a "нечего делать" turn in
+		 * the transcript. `skip` is a normal, quiet outcome — recorded so the panel
+		 * can say "ran by timer at 14:00, no tasks, so no LLM run" — while a broken
+		 * configuration (`fatal`) is reported as a failure, because a job that
+		 * silently never runs again is the one thing a person cannot discover.
+		 */
+		let verdict = { run: true };
+		try {
+			verdict = await precheck(job);
+		} catch (error) {
+			verdict = { run: false, status: 'fatal', message: String(error?.message ?? error) };
+		}
+		if (verdict?.run !== true) {
+			const skipped = verdict?.status === 'skip';
+			const message = typeof verdict?.message === 'string' ? verdict.message : 'the run was skipped';
+			await store.update(id, (current) => ({
+				...current,
+				lastStatus: skipped ? 'skipped' : 'failed',
+				/* eslint-disable-next-line no-undefined -- clearing a previous error */
+				lastError: skipped ? undefined : message,
+				...(skipped ? { lastNote: message } : {}),
+				runs: appendRun(current.runs, skipped
+					? { at: now(), status: 'skipped', reason: message }
+					: { at: now(), status: 'failed', error: message })
+			}));
+			if (skipped) logger?.info?.(`cron-schedule: job "${job.name}" skipped: ${message}`);
+			else logger?.warn?.(`cron-schedule: job "${job.name}" cannot run: ${message}`);
+			await store.update(id, (current) => withNextRun(current, Math.max(at, current.lastRunAt ?? at)));
+			inFlight.delete(id);
+			onChange();
+			return;
+		}
 		const timeout = new AbortController();
 		const timerHandle = setTimeout(() => timeout.abort(new Error('run timed out')), RUN_TIMEOUT_MS);
 		try {
@@ -116,6 +160,8 @@ export function createScheduler(options) {
 				lastStatus: 'succeeded',
 				lastSessionId: result?.sessionId,
 				lastError: undefined,
+				/* eslint-disable-next-line no-undefined -- a real run clears the skip note */
+				lastNote: undefined,
 				// Remember where the setup brief landed, and which version of it, so
 				// the next run on the same chat can skip it (and an edited brief is
 				// re-delivered instead of being silently ignored).

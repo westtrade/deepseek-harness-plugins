@@ -12,7 +12,7 @@
  * @module dsh-cron-schedule/scripts/host-test
  */
 
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { apply } from '../lib/index.js';
@@ -390,6 +390,7 @@ try {
 	ok('jobs route registered', host.routes.has(`exact:/api/cron-schedule/jobs`), [...host.routes.keys()].join(' '));
 	ok('settings route registered', host.routes.has('exact:/api/cron-schedule/settings'), [...host.routes.keys()].join(' '));
 	ok('job prefix route registered', host.routes.has('prefix:/api/cron-schedule/jobs'));
+	ok('board prefix route registered', host.routes.has('prefix:/api/cron-schedule/board'), [...host.routes.keys()].join(' '));
 	ok('seven AI tools registered', host.tools.size === 7, [...host.tools.keys()].join(','));
 	for (const toolName of ['cron_list', 'cron_create', 'cron_delete', 'cron_run', 'cron_chats', 'cron_models', 'cron_describe']) {
 		ok(`tool ${toolName} present`, host.tools.has(toolName));
@@ -414,7 +415,7 @@ try {
 	ok('manifest documents the job fields', typeof manifest.body.job?.expression === 'string' && typeof manifest.body.job?.workspacePath === 'string' && typeof manifest.body.job?.prompt === 'string');
 	ok('manifest flags the human-only route', manifest.body.endpoints?.some((entry) => entry.method === 'POST' && entry.path === '/api/cron-schedule/settings' && entry.humanOnly === true));
 	ok('manifest marks the job routes as open to the AI', manifest.body.endpoints?.filter((entry) => entry.path.startsWith('/api/cron-schedule/jobs')).every((entry) => entry.humanOnly === false));
-	ok('manifest names the status values', JSON.stringify(manifest.body.lastStatus) === JSON.stringify(['started', 'succeeded', 'failed']), JSON.stringify(manifest.body.lastStatus));
+	ok('manifest names the status values', JSON.stringify(manifest.body.lastStatus) === JSON.stringify(['started', 'succeeded', 'skipped', 'failed']), JSON.stringify(manifest.body.lastStatus));
 	const manifestMethod = await call(manifestRoute.handler, 'POST', '/api/cron-schedule/manifest', {});
 	ok('manifest rejects writes', manifestMethod.status === 405, String(manifestMethod.status));
 
@@ -871,6 +872,107 @@ try {
 	ok('failure logged', host.logs.some(([level, text]) => level === 'warn' && text.includes('provider exploded')));
 	host.failRuns(false);
 
+	// --- the task gate: no open tasks means no LLM run at all ---
+	const boardDir = await mkdtemp(path.join(tmpdir(), 'cron-board-'));
+	const boardPath = path.join(boardDir, 'TODO.md');
+	const gateJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Доска', expression: '*/30 * * * *', workspacePath: boardDir, prompt: 'бери задачу из Incoming',
+		gate: { file: 'TODO.md', heading: 'Incoming' }
+	}, { trusted: true });
+	ok('a job can be created with a gate', gateJob.status === 201 && gateJob.body.job.gate?.heading === 'Incoming', JSON.stringify(gateJob.body?.job?.gate));
+
+	// 1. No file yet: a misconfiguration, reported as a failure (not a silent skip).
+	const createdBeforeMissing = host.created.length;
+	const missingRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(gateJob.body.job.id)}/run`);
+	ok('a missing board file starts no chat', host.created.length === createdBeforeMissing);
+	ok('a missing board file is a failure', missingRun.body.job.lastStatus === 'failed' && /not found/.test(missingRun.body.job.lastError), JSON.stringify({ status: missingRun.body.job.lastStatus, error: missingRun.body.job.lastError }));
+
+	// 2. The column exists and is empty: skipped, quietly, and the model never starts.
+	await writeFile(boardPath, '## Incoming\n\n- [x] done yesterday\n\n## Working\n\n- [ ] not this one\n', 'utf8');
+	const createdBeforeEmpty = host.created.length;
+	const promptsBeforeEmpty = host.prompts.length;
+	const emptyRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(gateJob.body.job.id)}/run`);
+	ok('an empty column starts no chat', host.created.length === createdBeforeEmpty && host.prompts.length === promptsBeforeEmpty, JSON.stringify({ created: host.created.length, prompts: host.prompts.length }));
+	ok('an empty column is recorded as skipped', emptyRun.body.job.lastStatus === 'skipped', String(emptyRun.body.job.lastStatus));
+	ok('the skip says why, in the job', typeof emptyRun.body.job.lastNote === 'string' && emptyRun.body.job.lastNote.includes('Incoming'), String(emptyRun.body.job.lastNote));
+	ok('the skip leaves no chat bound', emptyRun.body.job.sessionId === null, String(emptyRun.body.job.sessionId));
+	ok('the skip still advances the schedule', emptyRun.body.job.nextRunAt > Date.now());
+	ok('the skipped run is in the history', emptyRun.body.job.runs.at(-1).status === 'skipped', JSON.stringify(emptyRun.body.job.runs.at(-1)));
+	ok('the skip is logged', host.logs.some(([level, text]) => level === 'info' && text.includes('skipped')), 'no skip log');
+	// `skipped` is not a failure: the row must show the note, not an error.
+	ok('a skip records no error', emptyRun.body.job.lastError === null, String(emptyRun.body.job.lastError));
+
+	// 3. A task appears: the run happens and the chat gets the prompt.
+	await writeFile(boardPath, '## Incoming\n\n- [ ] починить график\n', 'utf8');
+	const createdBeforeReady = host.created.length;
+	const readyRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(gateJob.body.job.id)}/run`);
+	ok('an open task starts the run', host.created.length === createdBeforeReady + 1, `created=${host.created.length}`);
+	ok('the gated run succeeds', readyRun.body.job.lastStatus === 'succeeded', String(readyRun.body.job.lastStatus));
+	ok('the gated run clears the old skip note', readyRun.body.job.lastNote === null, JSON.stringify(readyRun.body.job.lastNote));
+
+	// 4. The heading is a setting, not a constant.
+	const otherColumn = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Другая колонка', expression: '*/30 * * * *', workspacePath: boardDir, prompt: 'p',
+		gate: { file: 'TODO.md', heading: 'Review' }
+	}, { trusted: true });
+	await writeFile(boardPath, '## Incoming\n\n- [ ] есть задача\n\n## Review\n\n- [ ] тоже есть\n', 'utf8');
+	const reviewRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(otherColumn.body.job.id)}/run`);
+	ok('the configured column is the one counted', reviewRun.body.job.lastStatus === 'succeeded', String(reviewRun.body.job.lastStatus));
+	await writeFile(boardPath, '## Incoming\n\n- [ ] есть задача\n\n## Review\n\n', 'utf8');
+	const reviewEmpty = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(otherColumn.body.job.id)}/run`);
+	ok('another column being empty is not enough', reviewEmpty.body.job.lastStatus === 'skipped', String(reviewEmpty.body.job.lastStatus));
+
+	// 5. A renamed column must not silently disable the job for weeks.
+	await writeFile(boardPath, '## Inbox\n\n- [ ] задача\n', 'utf8');
+	const renamed = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(otherColumn.body.job.id)}/run`);
+	ok('a renamed column is a failure, not a skip', renamed.body.job.lastStatus === 'failed', String(renamed.body.job.lastStatus));
+	ok('the failure lists the sections it did find', renamed.body.job.lastError.includes('Inbox'), String(renamed.body.job.lastError));
+
+	// 6. The panel's own view of the board, including the create button.
+	const boardRoute = host.routes.get('prefix:/api/cron-schedule/board');
+	ok('the board route answers for a job', boardRoute !== undefined);
+	const boardAnswer = await call(boardRoute.handler, 'GET', `/api/cron-schedule/board/${encodeURIComponent(otherColumn.body.job.id)}`);
+	ok('the board answer reports the verdict', boardAnswer.status === 200 && boardAnswer.body.verdict === 'no-section', JSON.stringify(boardAnswer.body));
+	ok('the board answer lists the real headings', JSON.stringify(boardAnswer.body.headings) === JSON.stringify(['Inbox']), JSON.stringify(boardAnswer.body.headings));
+	const noBoardJob = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Нет файла', expression: '*/30 * * * *', workspacePath: path.join(boardDir, 'nested'), prompt: 'p',
+		gate: { file: 'TODO.md', heading: 'Incoming' }
+	}, { trusted: true });
+	const before = await call(boardRoute.handler, 'GET', `/api/cron-schedule/board/${encodeURIComponent(noBoardJob.body.job.id)}`);
+	ok('a missing board is reported as missing', before.body.verdict === 'missing' && before.body.exists === false, JSON.stringify(before.body.verdict));
+	const made = await call(boardRoute.handler, 'POST', `/api/cron-schedule/board/${encodeURIComponent(noBoardJob.body.job.id)}`, { create: true });
+	ok('the create button makes the file', made.status === 200 && made.body.exists === true && made.body.found === true, JSON.stringify(made.body));
+	ok('the created board starts empty, so the run is skipped', made.body.verdict === 'empty', String(made.body.verdict));
+	// The form checks the gate before the schedule exists, carrying the folder.
+	// The board file at this point holds only "## Inbox" (see step 5).
+	const draftBoard = await call(boardRoute.handler, 'POST', '/api/cron-schedule/board/draft', { workspacePath: boardDir, file: 'TODO.md', heading: 'Incoming' });
+	ok('an unsaved schedule can check its board', draftBoard.status === 200 && draftBoard.body.verdict === 'no-section', JSON.stringify(draftBoard.body.verdict));
+	ok('the draft answer resolves the folder it was given', draftBoard.body.resolvedPath === path.join(boardDir, 'TODO.md'), String(draftBoard.body.resolvedPath));
+	const draftNoFolder = await call(boardRoute.handler, 'POST', '/api/cron-schedule/board/draft', { file: 'TODO.md' });
+	ok('a draft check without a folder is refused', draftNoFolder.status === 400 && draftNoFolder.body.field === 'workspacePath', JSON.stringify(draftNoFolder.body));
+
+	// 7. A job without a gate is untouched by all of this.
+	const ungated = await call(jobsRoute.handler, 'POST', '/api/cron-schedule/jobs', {
+		name: 'Без доски', expression: '*/30 * * * *', workspacePath: boardDir, prompt: 'p'
+	}, { trusted: true });
+	const createdBeforeUngated = host.created.length;
+	const ungatedRun = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(ungated.body.job.id)}/run`);
+	ok('an ungated job runs regardless of the board', ungatedRun.body.job.lastStatus === 'succeeded' && host.created.length === createdBeforeUngated + 1, String(ungatedRun.body.job.lastStatus));
+
+	// 8. The tools see the gate, and can create one.
+	const gatedByTool = await host.tools.get('cron_create').execute({
+		name: 'Через ИИ', expression: '*/30 * * * *', workspacePath: boardDir, prompt: 'p',
+		gate: { file: 'TODO.md', heading: 'Incoming' }
+	}, { signal: new AbortController().signal });
+	ok('cron_create accepts a gate', gatedByTool.gateFile === 'TODO.md' && gatedByTool.gateHeading === 'Incoming', JSON.stringify(gatedByTool));
+	const listedGate = await host.tools.get('cron_list').execute({}, { signal: new AbortController().signal });
+	const gateSeen = listedGate.jobs.find((entry) => entry.id === gateJob.body.job.id);
+	ok('cron_list reports the gate', gateSeen.gate?.file === 'TODO.md', JSON.stringify(gateSeen.gate));
+	ok('cron_list reports the skip note', typeof gateSeen.lastNote === 'string' || gateSeen.lastStatus === 'succeeded', JSON.stringify({ status: gateSeen.lastStatus, note: gateSeen.lastNote }));
+	const gatedManifest = await call(host.routes.get('exact:/api/cron-schedule/manifest').handler, 'GET', '/api/cron-schedule/manifest');
+	ok('the manifest documents the gate', typeof gatedManifest.body.job.gate === 'string' && gatedManifest.body.job.gate.includes('Incoming'), JSON.stringify(gatedManifest.body.job.gate));
+	ok('the manifest lists the board route', gatedManifest.body.endpoints.some((entry) => entry.path.includes('/board')));
+
 	// --- toggle enabled off, then on ---
 	const off = await call(jobRoute.handler, 'POST', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`, { enabled: false });
 	ok('toggle off 200', off.status === 200, JSON.stringify(off.body).slice(0, 160));
@@ -926,7 +1028,6 @@ try {
 			entry.missed = [past - 3600e3, past - 2 * 3600e3];
 		}
 	}
-	const { writeFile } = await import('node:fs/promises');
 	await writeFile(storePath, JSON.stringify(onDisk));
 	// A fresh store instance reads the edited file (the running one keeps memory).
 	const { openJobStore } = await import('../lib/store.js');
