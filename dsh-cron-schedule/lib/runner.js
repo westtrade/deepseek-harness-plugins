@@ -62,7 +62,14 @@ function scheduledMessage(job, text = job.prompt, stage = 'task') {
 		role: 'user',
 		content: Object.freeze([Object.freeze({ type: 'text', text })]),
 		source: Object.freeze({
-			kind: 'cron',
+			// `kind: 'user'` on purpose. The Chat view renders a message as a bubble
+			// only for that kind (dsh-client-ui-chat: `source.kind !== 'user'` becomes a
+			// collapsed "context injection" row), and the harness's own `user-rpc`
+			// source is the same shape. A schedule fires *as* the person, so the run's
+			// message is theirs: a bubble they can read, not a hidden injection.
+			// `kind: 'cron'` was ours alone, and it made the brief invisible — the bot
+			// had its instructions, the reader saw nothing.
+			kind: 'user',
 			jobId: job.id,
 			jobName: job.name,
 			expression: job.expression,

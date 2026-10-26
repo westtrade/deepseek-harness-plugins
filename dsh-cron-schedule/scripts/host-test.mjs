@@ -669,7 +669,10 @@ try {
 	const message = agent.agent.messages[0];
 	ok('message is a user message', message.role === 'user');
 	ok('message carries the prompt', message.content[0].text === 'Собери утренний отчёт');
-	ok('message is tagged as cron', message.source.kind === 'cron' && message.source.jobId === job.id);
+	// `kind: 'user'` is what makes the Chat view draw a bubble instead of a
+	// collapsed context-injection row; the job fields still travel beside it.
+	ok('message is tagged as a user message, with the job recorded', message.source.kind === 'user' && message.source.jobId === job.id,
+		JSON.stringify(message.source));
 	ok('session id is greppable', agent.options.sessionId.startsWith('session-cron-'), agent.options.sessionId);
 	ok('workspace attached the session', host.workspaces[0].attached.includes(agent.options.sessionId));
 	const afterRun = await call(jobRoute.handler, 'GET', `/api/cron-schedule/jobs/${encodeURIComponent(job.id)}`);
@@ -700,7 +703,7 @@ try {
 	ok('that message is the brief followed by the task',
 		briefAgent.agent.messages[0].content[0].text === 'Ты — ревьюер. Доска: .vscode/TODO.md\n\nпроверь доску',
 		JSON.stringify(briefAgent.agent.messages[0].content[0].text));
-	ok('the message is marked as carrying the brief', briefAgent.agent.messages[0].source.kind === 'cron'
+	ok('the message is marked as carrying the brief', briefAgent.agent.messages[0].source.kind === 'user'
 		&& briefAgent.agent.messages[0].source.stage === 'init',
 		JSON.stringify(briefAgent.agent.messages[0].source));
 	// The next run continues that chat: the brief is already in the transcript,
