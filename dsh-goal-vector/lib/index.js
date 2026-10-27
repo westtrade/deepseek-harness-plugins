@@ -31,6 +31,7 @@
 // store code.
 const REV = new URL(import.meta.url).search;
 const { defaultStorePath, openVectorStore, renderVectorPrompt, VectorInputError } = await import('./store.js' + REV);
+const { toParameterSchema } = await import('./tool-schema.js' + REV);
 
 /** Cordis service name for this plugin. */
 export const name = 'goal-vector';
@@ -368,7 +369,11 @@ function registerTools(ctx, deps) {
 	/** One text block. */
 	const text = (value) => [{ type: 'text', text: value }];
 	/** A tool definition in the shape the registry validates. */
-	const tool = (definition) => definition;
+	/**
+	 * The registry takes a finished JSON Schema; our declarations use the compact
+	 * map, so compile it here rather than sending a schema with no root type.
+	 */
+	const tool = (definition) => ({ ...definition, parameters: toParameterSchema(definition.parameters) });
 	/** The tool-facing view of one vector (no timestamps: the schema is strict). */
 	const toolVector = (vector) => ({
 		id: vector.id,

@@ -36,7 +36,8 @@ window.__ModuleLoader__.load({
 			"settings.invalid": "Check the settings: {message}",
 			"state.title": "Live mesh",
 			"state.stopped": "Broker is not running",
-			"state.tools": "{count} tool(s) exposed",
+			"state.catalog": "{count} action(s) reachable",
+			"state.hint": "The AI sees three tools — mesh_list, mesh_describe, mesh_call — however many actions the mesh publishes.",
 			"state.nodes": "Nodes",
 			"state.services": "Services",
 			"state.empty": "No remote services yet — start a peer on this namespace."
@@ -59,7 +60,8 @@ window.__ModuleLoader__.load({
 			"settings.invalid": "请检查设置：{message}",
 			"state.title": "实时网格",
 			"state.stopped": "Broker 未运行",
-			"state.tools": "已暴露 {count} 个工具",
+			"state.catalog": "可调用动作：{count} 个",
+			"state.hint": "无论网格发布多少动作，AI 只看到三个工具：mesh_list、mesh_describe、mesh_call。",
 			"state.nodes": "节点",
 			"state.services": "服务",
 			"state.empty": "还没有远程服务——请在同一命名空间启动对等节点。"
@@ -82,7 +84,8 @@ window.__ModuleLoader__.load({
 			"settings.invalid": "Проверьте настройки: {message}",
 			"state.title": "Живая сеть",
 			"state.stopped": "Брокер не запущен",
-			"state.tools": "Инструментов доступно: {count}",
+			"state.catalog": "Действий доступно: {count}",
+			"state.hint": "ИИ видит три инструмента — mesh_list, mesh_describe, mesh_call — сколько бы действий ни публиковала сеть.",
 			"state.nodes": "Узлы",
 			"state.services": "Сервисы",
 			"state.empty": "Удалённых сервисов пока нет — запустите узел в этом пространстве имён."
@@ -224,6 +227,7 @@ window.__ModuleLoader__.load({
 			};
 			const services = state?.state?.services ?? [];
 			const nodes = [...new Set(services.map((service) => service.nodeID))];
+			const actionCount = state?.catalog?.actions ?? 0;
 			const title = t("panel.title");
 			const body = el("div", { className: "dshmca_body" },
 				el("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px" } },
@@ -249,7 +253,8 @@ window.__ModuleLoader__.load({
 					state?.state?.running !== true
 						? el("div", { style: { fontSize: "12px", color: "var(--dsw-alias-label-tertiary, inherit)" } }, t("state.stopped"))
 						: el("div", { style: { fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" } },
-							`${t("state.nodes")}: ${String(nodes.length)} · ${t("state.services")}: ${String(services.length)} · ${fill(t("state.tools"), { count: state?.tools?.length ?? 0 })}`),
+							`${t("state.nodes")}: ${String(nodes.length)} · ${t("state.services")}: ${String(services.length)} · ${fill(t("state.catalog"), { count: actionCount })}`),
+					el("div", { style: { fontSize: "11px", color: "var(--dsw-alias-label-tertiary, inherit)" } }, t("state.hint")),
 					services.length === 0
 						? el("div", { style: { fontSize: "11px", color: "var(--dsw-alias-label-tertiary, inherit)" } }, t("state.empty"))
 						: el("ul", { style: { margin: 0, paddingLeft: "18px", fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" } },

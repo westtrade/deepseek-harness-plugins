@@ -191,12 +191,16 @@ ok('the state route reports the command as ready', (await call(host.routes.get(`
 const command = host.commands.get('moleculer');
 ok('the command advertises its verbs', String(command?.input?.hint).includes('start'), String(command?.input?.hint));
 
+// --- the fixed three-tool surface: the whole point is that it is SMALL ---
+ok('exactly three mesh tools are registered', [...host.tools.keys()].every((name) => ['mesh_list', 'mesh_describe', 'mesh_call'].includes(name)) && host.tools.size === 3, [...host.tools.keys()].join(','));
+
 const stateRoute = host.routes.get(`exact:${STATE_PATH}`);
 const initial = await call(stateRoute.handler, 'GET', STATE_PATH);
 ok('the state route answers 200', initial.status === 200, JSON.stringify(initial.body).slice(0, 200));
 ok('the broker reports running', initial.body.state.running === true, JSON.stringify(initial.body.state).slice(0, 160));
-// `$node` is published deliberately: it is the local smoke-test tool.
-ok('a fresh broker publishes the local $node tools', initial.body.tools.length > 0 && initial.body.tools.every((name) => name.startsWith('mesh_node_')), initial.body.tools.join(','));
+ok('the state route publishes the catalog', Array.isArray(initial.body.catalog?.services));
+ok('the catalog counts the local $node service', initial.body.catalog.services.some((s) => s.name === '$node'), JSON.stringify(initial.body.catalog.services.map((s) => s.name)));
+ok('the tool list stays three even with $node actions', initial.body.tools.length === 3, initial.body.tools.join(','));
 ok('the summary mentions the namespace', initial.body.summary.includes('dsh'), initial.body.summary);
 
 // --- the chat command ---
@@ -206,7 +210,7 @@ const badVerb = await command.handler({ rawInput: 'frobnicate' });
 ok('the command refuses an unknown verb', badVerb.kind === 'error' && badVerb.text.includes('unknown verb'), badVerb.text);
 const stopped = await command.handler({ rawInput: 'stop' });
 ok('the command stops the mesh', stopped.kind === 'success' && (await call(stateRoute.handler, 'GET', STATE_PATH)).body.state.running === false, stopped.text);
-ok('stopping removes the mesh tools', (await call(stateRoute.handler, 'GET', STATE_PATH)).body.tools.length === 0);
+ok('stopping keeps the fixed tools registered', (await call(stateRoute.handler, 'GET', STATE_PATH)).body.tools.length === 3);
 const restarted = await command.handler({ rawInput: 'restart' });
 ok('the command restarts the mesh', restarted.kind === 'success' && (await call(stateRoute.handler, 'GET', STATE_PATH)).body.state.running === true, restarted.text);
 
@@ -237,18 +241,20 @@ await new Promise((resolve) => setTimeout(resolve, 3000));
 const joined = await call(stateRoute.handler, 'GET', STATE_PATH);
 ok('the peer service appears in the state', joined.body.state.services.some((s) => s.name === 'orders'), joined.body.state.services.map((s) => s.name).join(','));
 ok('the peer service is marked remote', joined.body.state.services.find((s) => s.name === 'orders')?.local === false);
-ok('remote actions become tools', joined.body.tools.some((name) => name.includes('orders_create')), joined.body.tools.join(','));
-ok('a local service is not republished', !joined.body.tools.some((name) => name.startsWith('mesh_$node')));
+ok('the peer actions appear in the catalog', joined.body.catalog.services.find((s) => s.name === 'orders')?.actions.includes('orders.create'), JSON.stringify(joined.body.catalog.services));
+ok('the tool surface does NOT grow with the mesh', joined.body.tools.length === 3, joined.body.tools.join(','));
+ok('no per-action tool is registered', ![...host.tools.keys()].some((name) => name.includes('orders_')), [...host.tools.keys()].join(','));
 
-const createTool = host.tools.get([...host.tools.keys()].find((name) => name.includes('orders_create')));
-ok('the generated tool has a description', typeof createTool?.description === 'string' && createTool.description.length > 0);
-ok('the generated tool exposes the remote params', Object.keys(createTool?.parameters ?? {}).includes('sku'), JSON.stringify(createTool?.parameters));
-const called = await createTool.execute({ sku: 'ABC', qty: 2 }, {});
+const listTool = host.tools.get('mesh_list');
+const describeTool = host.tools.get('mesh_describe');
+const callTool = host.tools.get('mesh_call');
+ok('the meta-tools exist', listTool !== undefined && describeTool !== undefined && callTool !== undefined);
+ok('mesh_list finds the remote service', (await listTool.execute({}, {})).services.some((s) => s.name === 'orders'));
+ok('mesh_list filters', (await listTool.execute({ service: 'ord' }, {})).services.every((s) => s.name.includes('ord')));
+ok('mesh_describe returns the remote params', Object.keys((await describeTool.execute({ action: 'orders.create' }, {})).params.properties).includes('sku'));
+const called = await callTool.execute({ action: 'orders.create', params: { sku: 'ABC', qty: 2 } }, {});
 ok('calling the tool reaches the peer', called.result?.id === 'o-1' && called.result?.sku === 'ABC', JSON.stringify(called));
-
-const pingTool = host.tools.get([...host.tools.keys()].find((name) => name.includes('orders_ping')));
-ok('a param-less action still becomes a tool', pingTool !== undefined);
-ok('a param-less action calls cleanly', (await pingTool.execute({}, {})).result === 'pong');
+ok('a param-less action calls cleanly', (await callTool.execute({ action: 'orders.ping' }, {})).result === 'pong');
 
 // --- the model was told about the change, but only because it was working ---
 await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -261,8 +267,10 @@ ok('an idle agent is not woken', host.agents.get('session-idle').injected.length
 await peer.stop();
 await new Promise((resolve) => setTimeout(resolve, 3500));
 const left = await call(stateRoute.handler, 'GET', STATE_PATH);
-ok('the departed service leaves the tool surface', !left.body.tools.some((name) => name.includes('orders_')), left.body.tools.join(','));
-ok('the registry keeps no stale tool', ![...host.tools.keys()].some((name) => name.includes('orders_')));
+ok('the departed service leaves the catalog', !left.body.catalog.services.some((s) => s.name === 'orders'), JSON.stringify(left.body.catalog.services.map((s) => s.name)));
+ok('the tool surface never changes', left.body.tools.length === 3, left.body.tools.join(','));
+ok('a call after the departure fails cleanly', await callTool.execute({ action: 'orders.create', params: {} }, {}).then(() => false, (error) => String(error.message).length > 0));
+ok('the registry still holds exactly the three tools', host.tools.size === 3, [...host.tools.keys()].join(','));
 
 await new Promise((resolve) => setTimeout(resolve, 300));
 console.log(`\nhost: pass=${pass} fail=${fail}`);

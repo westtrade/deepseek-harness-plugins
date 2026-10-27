@@ -5,11 +5,13 @@
  *
  * 1. starts a broker from the durable harness settings, so it joins whatever
  *    namespace/transporter the peers use;
- * 2. publishes the mesh's REMOTE actions to the model as callable tools —
- *    Moleculer already describes its actions, so the names and params are read,
- *    not invented;
- * 3. serves those same tools over MCP (Streamable HTTP) for an external MCP
- *    client;
+ * 2. publishes a FIXED three-tool API to the model — `mesh_list`,
+ *    `mesh_describe`, `mesh_call` — instead of one tool per mesh action. The
+ *    mesh can publish hundreds of actions, and one tool each would put all of
+ *    their descriptions into every request; the catalog is fetched on demand
+ *    instead, so context cost follows what the model actually asks about;
+ * 3. serves the same three tools over MCP (Streamable HTTP) for an external
+ *    MCP client;
  * 4. notifies a working model when the mesh changes (a node joins, leaves, or
  *    its services move).
  *
@@ -21,9 +23,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { toParameterSchema } from './tool-schema.js';
 
 const REV = new URL(import.meta.url).search;
-const { describeMesh, meshTools, normalizeSettings } = await import('./mesh.js' + REV);
+const { describeMesh, meshCatalog, meshToolDescriptors, normalizeSettings } = await import('./mesh.js' + REV);
 
 /** Cordis service name for this plugin. */
 export const name = 'moleculer';
@@ -42,6 +45,9 @@ export const MCP_PATH = '/api/moleculer/mcp';
 
 /** Tool-name prefix, so mesh tools are recognisable among harness tools. */
 const TOOL_PREFIX = 'mesh';
+
+/** The one output shape every mesh tool declares (results are opaque JSON). */
+const MESH_OUTPUT_SCHEMA = { type: 'object', additionalProperties: true, properties: {} };
 
 /** Mesh changes are coalesced for this long before the model is told once. */
 const NOTIFY_DEBOUNCE_MS = 1500;
@@ -103,66 +109,48 @@ export async function apply(ctx) {
 	}
 
 	/**
-	 * Rebuild the model-facing tool surface from the registry.
+	 * Register the fixed mesh API, once, at apply time.
 	 *
-	 * Two phases, mirroring the MCP client: derive the whole next generation
-	 * first, then swap. A failure while deriving leaves the previous tools in
-	 * place, so a transient registry hiccup cannot strip the model's tools.
-	 *
-	 * @param broker - the live broker.
+	 * The names and descriptions never depend on the registry, which is the
+	 * whole point: the surface is constant, so a mesh that gains or loses
+	 * services never churns the model's tool list. The tools read `state` per
+	 * call, which is why they keep working across a broker restart.
 	 */
-	function resyncTools(broker) {
-		let next;
-		try {
-			next = meshTools(snapshot(broker), TOOL_PREFIX);
-		} catch (error) {
-			ctx.logger.warn(`moleculer: could not derive mesh tools: ${String(error?.message ?? error)}`);
-			return;
-		}
-		const wanted = new Set(next.map((tool) => tool.name));
-		for (const [toolName, dispose] of registered) {
-			if (wanted.has(toolName)) continue;
-			registered.delete(toolName);
-			try {
-				dispose();
-			} catch (error) {
-				ctx.logger.warn(`moleculer: could not drop tool ${toolName}: ${String(error?.message ?? error)}`);
+	function publishTools() {
+		const descriptors = meshToolDescriptors({
+			state: () => state,
+			/**
+			 * Invoke one action on the live broker.
+			 * @param action - dotted action name from the catalog.
+			 * @param params - arguments forwarded unchanged.
+			 * @returns the action's result.
+			 */
+			async call(action, params) {
+				if (live === undefined) throw new Error('the Moleculer mesh is not running');
+				// The broker is re-read per call: the node that owned this action
+				// may have left, and Moleculer fails over to another one.
+				return live.call(action, params);
 			}
-		}
-		for (const tool of next) {
-			if (registered.has(tool.name)) continue;
+		}, TOOL_PREFIX);
+		for (const tool of descriptors) {
 			try {
 				registered.set(tool.name, ctx.tools.register({
 					name: tool.name,
 					description: tool.description,
-					parameters: tool.inputSchema.properties,
+					// Descriptors may carry a full schema already (paramsToJsonSchema);
+					// the compiler passes those through and wraps the compact maps.
+					parameters: toParameterSchema(tool.parameters),
 					output: {
-						schema: { type: 'object', additionalProperties: true, properties: {} },
-						render: (_args, value) => [{ type: 'text', text: formatMeshResult(value) }]
+						schema: MESH_OUTPUT_SCHEMA,
+						render: (_args, value) => [{ type: 'text', text: tool.render(value) }]
 					},
-					async execute(args, exec) {
-						// The broker is re-read per call: the node that owned this action
-						// may have left, and Moleculer fails over to another one.
-						const result = await broker.call(tool.action, args, {
-							...(exec.signal === undefined ? {} : { timeout: undefined })
-						});
-						return { ok: true, action: tool.action, result };
+					async execute(args) {
+						return tool.execute(args ?? {});
 					}
 				}));
 			} catch (error) {
 				ctx.logger.warn(`moleculer: could not register tool ${tool.name}: ${String(error?.message ?? error)}`);
 			}
-		}
-	}
-
-	/** Render one mesh call result for the model. */
-	function formatMeshResult(value) {
-		const payload = value?.result;
-		if (payload === undefined) return 'no result';
-		try {
-			return typeof payload === 'string' ? payload : JSON.stringify(payload);
-		} catch {
-			return String(payload);
 		}
 	}
 
@@ -194,16 +182,15 @@ export async function apply(ctx) {
 		}
 	}
 
-	/** Recompute state, resync tools, and notify once the mesh settles. */
+	/** Recompute state, and notify once the mesh settles. */
 	function refresh(broker, reason) {
 		state = snapshot(broker);
-		resyncTools(broker);
 		if (reason === undefined) return;
 		if (notifyTimer !== undefined) clearTimeout(notifyTimer);
 		notifyTimer = setTimeout(() => {
 			notifyTimer = undefined;
 			if (live === undefined) return;
-			notifyBusyAgents(`${reason} ${describeMesh(state)}`);
+			notifyBusyAgents(`${reason} ${describeMesh(state)} Call mesh_list to see the current actions.`);
 		}, NOTIFY_DEBOUNCE_MS);
 	}
 
@@ -253,14 +240,10 @@ export async function apply(ctx) {
 			clearTimeout(notifyTimer);
 			notifyTimer = undefined;
 		}
-		for (const [toolName, dispose] of registered) {
-			registered.delete(toolName);
-			try {
-				dispose();
-			} catch {
-				// A tool already gone is not an error worth stopping shutdown over.
-			}
-		}
+		// The three mesh tools are NOT unregistered here: they are part of the
+		// plugin's constant surface and answer "the mesh is not running" while
+		// the broker is down. Dropping them on a restart would make the model's
+		// tool list flicker for no reason.
 		if (live === undefined) return;
 		const broker = live;
 		live = undefined;
@@ -301,6 +284,13 @@ export async function apply(ctx) {
 		startBroker().catch((error) => ctx.logger.error(`moleculer: restart failed: ${String(error?.message ?? error)}`));
 	}), 'moleculer: settings watch');
 
+	// --- the model-facing surface: three tools, registered once ---
+	//
+	// Not an effect: their lifetime is the plugin's, and they must not be torn
+	// down and rebuilt when the broker restarts (the tool list would flicker and
+	// the model would re-read descriptions for no reason).
+	publishTools();
+
 	// --- the panel's read surface ---
 	ctx.effect(() => ctx.webServer.register({
 		kind: 'exact',
@@ -313,6 +303,7 @@ export async function apply(ctx) {
 			}
 			sendJson(res, 200, {
 				state,
+				catalog: meshCatalog(state),
 				tools: [...registered.keys()],
 				command: commandReady,
 				summary: describeMesh(state)
@@ -320,38 +311,45 @@ export async function apply(ctx) {
 		}
 	}), 'moleculer: state route');
 
-	// --- the same mesh over MCP, for an external MCP client ---
+	// --- the same three tools over MCP, for an external MCP client ---
 	//
 	// One McpServer per HTTP session, held beside its Streamable HTTP transport:
 	// the SDK requires the pair, and one server shared across sessions would
 	// cross the clients' state.
 	//
-	// ponytail: the server is built per session and the tool set is that
-	// session's snapshot; a mesh change reaches an MCP client only by
-	// reconnecting. Push a `tools/list_changed` when an MCP client actually
-	// needs it — sessions here are short and rare.
+	// The tool set is the fixed meta-API, so unlike the old per-action bridge
+	// no `tools/list_changed` is ever needed: a mesh change does not change
+	// what this endpoint publishes.
 	const mcpSessions = new Map();
 
-	/** Build one MCP server publishing the current mesh tools. */
+	/** Build one MCP server publishing the mesh meta-tools. */
 	async function createMcpServer() {
 		const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
 		const { z } = await import('zod');
 		const server = new McpServer({ name: 'dsh-moleculer', version: '0.1.0' });
-		const typeOf = (type) => type === 'number' ? z.number().optional()
-			: type === 'boolean' ? z.boolean().optional()
-				: type === 'array' ? z.array(z.unknown()).optional()
-					: z.string().optional();
-		for (const tool of meshTools(state, TOOL_PREFIX)) {
-			const shape = {};
-			for (const [field, property] of Object.entries(tool.inputSchema.properties ?? {})) {
-				shape[field] = typeOf(property.type);
+		const typeOf = (property) => {
+			const base = property?.type === 'number' ? z.number()
+				: property?.type === 'boolean' ? z.boolean()
+					: property?.type === 'object' ? z.record(z.string(), z.unknown())
+						: property?.type === 'array' ? z.array(z.unknown())
+							: z.string();
+			return property?.required === true ? base : base.optional();
+		};
+		for (const tool of meshToolDescriptors({
+			state: () => state,
+			call: async (action, params) => {
+				if (live === undefined) throw new Error('the Moleculer mesh is not running');
+				return live.call(action, params);
 			}
+		}, TOOL_PREFIX)) {
+			const shape = {};
+			for (const [field, property] of Object.entries(tool.parameters ?? {})) shape[field] = typeOf(property);
 			server.registerTool(tool.name, { description: tool.description, inputSchema: shape }, async (args) => {
 				try {
-					const result = await live?.call(tool.action, args ?? {});
-					return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] };
+					const value = await tool.execute(args ?? {});
+					return { content: [{ type: 'text', text: tool.render(value) }] };
 				} catch (error) {
-					return { isError: true, content: [{ type: 'text', text: `Moleculer call ${tool.action} failed: ${String(error?.message ?? error)}` }] };
+					return { isError: true, content: [{ type: 'text', text: `Moleculer: ${String(error?.message ?? error)}` }] };
 				}
 			});
 		}
@@ -410,7 +408,7 @@ export async function apply(ctx) {
 					}
 					if (verb === 'stop') {
 						await stopBroker();
-						return { kind: 'success', text: 'Moleculer mesh stopped; its tools were removed.' };
+						return { kind: 'success', text: 'Moleculer mesh stopped. The mesh tools stay registered and report that the mesh is down until you start it again.' };
 					}
 					if (verb === 'restart') {
 						await startBroker();
@@ -424,6 +422,19 @@ export async function apply(ctx) {
 		});
 		commandReady = true;
 	});
+
+	ctx.effect(() => () => {
+		// Drop the tools so a disposed plugin leaves nothing behind; the broker
+		// itself is stopped by the effect below.
+		for (const [toolName, dispose] of registered) {
+			registered.delete(toolName);
+			try {
+				dispose();
+			} catch {
+				// A tool already gone is not an error worth stopping shutdown over.
+			}
+		}
+	}, 'moleculer: tool disposal');
 
 	ctx.effect(() => () => {
 		void stopBroker();
