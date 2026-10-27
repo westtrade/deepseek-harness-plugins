@@ -28,6 +28,7 @@
 // store/scheduler/cron code.
 const REV = new URL(import.meta.url).search;
 const { applyAutoCatchUp, defaultStorePath, jobView, JobInputError, MAX_PROMPT_CHARS, normalizeAllowedModels, normalizeJob, openJobStore } = await import('./store.js' + REV);
+const { toParameterSchema } = await import('./tool-schema.js' + REV);
 const { normalizeGate } = await import('./store.js' + REV);
 const { createScheduler } = await import('./scheduler.js' + REV);
 const { runJob } = await import('./runner.js' + REV);
@@ -1403,7 +1404,7 @@ function registerTools(ctx, deps) {
 	ctx.inject(['tools'], (toolCtx) => {
 		for (const definition of definitions) {
 			try {
-				toolCtx.tools.register(definition);
+				toolCtx.tools.register({ ...definition, parameters: toParameterSchema(definition.parameters) });
 			} catch (error) {
 				toolCtx.logger?.warn?.(`cron-schedule: tool "${definition.name}" was not registered: ${String(error?.message ?? error)}`);
 			}
