@@ -17,11 +17,12 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "test": "node scripts/host-test.mjs && node scripts/client-smoke.mjs",
+    "test": "npm run test:host && npm run test:client && npm run test:schema",
     "test:host": "node scripts/host-test.mjs",
     "test:client": "node scripts/client-smoke.mjs",
     "vendor": "node scripts/vendor.mjs",
-    "test:board": "node scripts/board-smoke.mjs"
+    "test:board": "node scripts/board-smoke.mjs",
+    "test:schema": "node scripts/schema-test.mjs"
   },
   "dsh": {
     "client": {

@@ -98,6 +98,14 @@ function fakeContext() {
 			}
 		},
 		tools: {
+			/** The real registry projects registered definitions here (see schemas()). */
+			schemas() {
+				return [...tools.values()].map((definition) => ({
+					name: definition.name,
+					description: definition.description,
+					parameters: definition.parameters
+				}));
+			},
 			register(definition) {
 				// Same contract as the real registry: schema subset + output check.
 				assertToolSchema(definition.output?.schema, `${definition.name}.output.schema`);
@@ -299,6 +307,18 @@ try {
 	ok('the library is empty again', (await callBoard('GET', '/api/excalidraw/library')).body.items.length === 0);
 	const badLibraryMethod = await callBoard('PATCH', '/api/excalidraw/library', {});
 	ok('the library rejects unknown methods', badLibraryMethod.status === 405, String(badLibraryMethod.status));
+
+	// --- the tool audit: what a strict provider would reject ---
+	const audit = await callBoard('GET', '/api/excalidraw/tool-audit');
+	ok('the audit route serves', audit.status === 200 && audit.body.ok === true, JSON.stringify(audit.body).slice(0, 120));
+	ok('the audit reports the registered tools', Array.isArray(audit.body.clean) && audit.body.clean.length >= 4, JSON.stringify(audit.body.clean));
+	ok('the audit finds nothing wrong with our own tools', audit.body.flaggedCount === 0, JSON.stringify(audit.body.flagged));
+	const auditSchemas = await callBoard('GET', '/api/excalidraw/tool-audit?schemas=1');
+	ok('the audit can return the schemas themselves', Array.isArray(auditSchemas.body.tools) && auditSchemas.body.tools.length >= 4);
+	ok('every registered schema is an object schema', auditSchemas.body.tools.every((tool) => tool.parameters?.type === 'object' && tool.parameters.properties !== undefined));
+	ok('no schema carries a boolean required', !JSON.stringify(auditSchemas.body.tools).includes('"required":true'));
+	const auditWrite = await callBoard('POST', '/api/excalidraw/tool-audit', {});
+	ok('the audit rejects writes', auditWrite.status === 405, String(auditWrite.status));
 
 	// --- the AI tools ---
 	const signal = () => ({ signal: new AbortController().signal, agent: { session: { id: 'session-alpha' } } });

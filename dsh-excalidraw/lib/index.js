@@ -31,6 +31,7 @@ const REV = new URL(import.meta.url).search;
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { toParameterSchema } from './tool-schema.js';
 const { openBoardStore } = await import('./store.js' + REV);
 
 /** Cordis service name for this plugin. */
@@ -50,6 +51,79 @@ export const BASE_PATH = '/api/excalidraw';
  * them — and the AI can contribute templates through its own tool.
  */
 const LIBRARY_PATH = `${BASE_PATH}/library`;
+
+/**
+ * The tool audit route.
+ *
+ * A model provider can refuse a whole request because of one tool's schema, and
+ * the failure surfaces as a provider error with no mention of the tool. This
+ * route shows the schemas exactly as the provider receives them, plus whatever
+ * in them a strict provider (Gemini, in particular) is known to reject.
+ */
+const TOOL_AUDIT_PATH = `${BASE_PATH}/tool-audit`;
+
+
+/**
+ * Keywords Gemini's `Schema` does not have.
+ *
+ * Google's own SDK drops `additionalProperties` in `processJsonSchema` instead of
+ * sending it, which is the tell: the field does not exist on the wire schema, so
+ * an OpenAI-compatible proxy that forwards tool schemas verbatim gets a payload
+ * the Gemini API refuses with a 400.
+ */
+const GEMINI_UNSUPPORTED_KEYWORDS = [
+	'oneOf', 'anyOf', 'allOf', 'not', '$ref', '$defs', 'const', 'examples',
+	'patternProperties', 'propertyNames', 'dependencies', 'dependentSchemas', 'if', 'then', 'else'
+];
+
+/**
+ * Collect the reasons one parameters schema may not survive a strict provider.
+ *
+ * @param node - a JSON Schema node.
+ * @param path - where it sits, for the report.
+ * @param issues - accumulator.
+ */
+function auditSchemaNode(node, path, issues) {
+	if (node === null || typeof node !== 'object' || Array.isArray(node)) {
+		issues.push(`${path} is not a schema object (${JSON.stringify(node)})`);
+		return;
+	}
+	if (Object.hasOwn(node, 'additionalProperties')) {
+		issues.push(`${path}.additionalProperties (not part of Gemini's Schema)`);
+	}
+	for (const keyword of GEMINI_UNSUPPORTED_KEYWORDS) {
+		if (Object.hasOwn(node, keyword)) issues.push(`${path}.${keyword} is not supported by Gemini`);
+	}
+	if (Array.isArray(node.enum) && node.enum.some((value) => typeof value !== 'string')) {
+		issues.push(`${path}.enum has non-string values (Gemini accepts strings only)`);
+	}
+	if (Object.hasOwn(node, 'required') && (!Array.isArray(node.required) || node.required.some((entry) => typeof entry !== 'string'))) {
+		issues.push(`${path}.required must be an array of strings`);
+	}
+	if (node.type === 'object' && (node.properties === undefined || Object.keys(node.properties).length === 0)) {
+		// An open object is legal JSON Schema, so this is a note, not a defect.
+		issues.notes.push(`${path} is an open object (no declared properties)`);
+	}
+	if (node.type === 'array' && node.items === undefined) {
+		issues.push(`${path} is an array with no items`);
+	}
+	if (node.properties !== null && typeof node.properties === 'object') {
+		for (const [name, property] of Object.entries(node.properties)) auditSchemaNode(property, `${path}.properties.${name}`, issues);
+	}
+	if (node.items !== undefined) auditSchemaNode(node.items, `${path}.items`, issues);
+}
+
+/** Audit one tool's model-facing schema. */
+function auditTool(tool) {
+	const issues = [];
+	issues.notes = [];
+	const parameters = tool.parameters ?? {};
+	if (parameters.type !== 'object') issues.push(`parameters.type is ${JSON.stringify(parameters.type)}, expected "object"`);
+	auditSchemaNode(parameters, 'parameters', issues);
+	const report = { name: tool.name, issues };
+	if (issues.notes.length > 0) report.notes = issues.notes;
+	return report;
+}
 
 /** The board collection: list the boards that exist. */
 const BOARDS_PATH = `${BASE_PATH}/boards`;
@@ -124,6 +198,13 @@ export async function apply(ctx, config = {}) {
 
 	/** The tool surface this plugin declares, for the manifest route. */
 	const toolCatalog = [];
+	/**
+	 * Access to the live tool registry, for the audit route.
+	 *
+	 * The registry service only exists inside a `ctx.inject(['tools'], …)` scope,
+	 * so the getter is filled there and the HTTP handler reads it lazily.
+	 */
+	const toolSource = { schemas: undefined };
 	const staticRoot = fileURLToPath(new URL('../static/', import.meta.url)).replace(/[\\/]+$/, '');
 
 	/**
@@ -208,6 +289,40 @@ export async function apply(ctx, config = {}) {
 	};
 
 	/**
+	 * `GET /api/excalidraw/tool-audit` — every registered tool's model-facing
+	 * schema, with the parts a strict provider rejects.
+	 */
+	const toolAuditHandler = (req, res) => {
+		if (req.method !== 'GET' && req.method !== 'HEAD') {
+			res.writeHead(405, { allow: 'GET, HEAD' });
+			res.end();
+			return;
+		}
+		let tools;
+		try {
+			tools = typeof toolSource.schemas === 'function' ? toolSource.schemas() : [];
+		} catch (error) {
+			sendJson(res, 200, { ok: false, flagged: [], clean: [], error: `tool registry is not available: ${String(error?.message ?? error)}` });
+			return;
+		}
+		const audited = Array.isArray(tools) ? tools.map(auditTool) : [];
+		// `?schemas=1` returns the schemas themselves: the only way to replay a
+		// provider's rejection of a real tool set offline.
+		if (new URL(req.url ?? '/', 'http://dsh.invalid').searchParams.get('schemas') === '1') {
+			sendJson(res, 200, { ok: true, tools: Array.isArray(tools) ? tools : [] });
+			return;
+		}
+		const flagged = audited.filter((tool) => tool.issues.length > 0);
+		sendJson(res, 200, {
+			ok: true,
+			toolCount: audited.length,
+			flaggedCount: flagged.length,
+			flagged,
+			clean: audited.filter((tool) => tool.issues.length === 0).map((tool) => tool.name)
+		});
+	};
+
+	/**
 	 * `GET /api/excalidraw/boards` — every board, newest first.
 	 *
 	 * Finds a board without knowing a session id: an agent can look for the chat
@@ -267,6 +382,7 @@ export async function apply(ctx, config = {}) {
 			},
 			endpoints: [
 				{ method: 'GET', path: MANIFEST_PATH, purpose: 'this description' },
+				{ method: 'GET', path: TOOL_AUDIT_PATH, purpose: 'every tool schema as the provider sees it, with what a strict provider (Gemini) rejects' },
 				{ method: 'GET', path: BOARDS_PATH, purpose: 'every board, newest first' },
 				{ method: 'GET', path: `${BOARDS_PREFIX}<sessionId>`, purpose: "read one chat's scene" },
 				{ method: 'PUT', path: `${BOARDS_PREFIX}<sessionId>`, purpose: '{ elements, appState } replaces the scene; skeletons are normalized on load' },
@@ -347,6 +463,7 @@ export async function apply(ctx, config = {}) {
 			const url = new URL(req.url ?? '/', 'http://dsh.invalid');
 			const pathname = url.pathname;
 			if (pathname === MANIFEST_PATH) return manifestHandler(req, res);
+			if (pathname === TOOL_AUDIT_PATH) return toolAuditHandler(req, res);
 			if (pathname === LIBRARY_PATH || pathname.startsWith(`${LIBRARY_PATH}/`)) return libraryHandler(req, res);
 			if (pathname === BOARDS_PATH) return boardsIndexHandler(req, res);
 			if (pathname.startsWith(BOARDS_PREFIX)) return boardsHandler(req, res);
@@ -354,7 +471,7 @@ export async function apply(ctx, config = {}) {
 		}
 	}), 'excalidraw: board route');
 
-	registerTools(ctx, { store, toolCatalog });
+	registerTools(ctx, { store, toolCatalog, toolSource });
 }
 
 
@@ -441,7 +558,7 @@ export function renderBoardLines(board) {
  * @param deps - the board store.
  */
 function registerTools(ctx, deps) {
-	const { store, toolCatalog = [] } = deps;
+	const { store, toolCatalog = [], toolSource } = deps;
 	/** One text block. */
 	const text = (value) => [{ type: 'text', text: value }];
 	/**
@@ -674,9 +791,13 @@ function registerTools(ctx, deps) {
 		toolCatalog.push({ name: definition.name, description: definition.description, parameters: definition.parameters ?? {} });
 	}
 	ctx.inject(['tools'], (toolCtx) => {
+		// The registry, exposed for the audit route: one place knows how to ask it.
+		if (toolSource !== undefined) {
+			toolSource.schemas = () => (typeof toolCtx.tools?.schemas === 'function' ? toolCtx.tools.schemas() : []);
+		}
 		for (const definition of definitions) {
 			try {
-				toolCtx.tools.register(definition);
+				toolCtx.tools.register({ ...definition, parameters: toParameterSchema(definition.parameters) });
 			} catch (error) {
 				toolCtx.logger?.warn?.(`excalidraw: tool "${definition.name}" was not registered: ${String(error?.message ?? error)}`);
 			}

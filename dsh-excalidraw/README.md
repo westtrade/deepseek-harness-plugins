@@ -37,6 +37,39 @@
     Агент пишет в ту же доску, которую видит человек, — изменения появляются
     мгновенно.
 
+## Схемы инструментов и строгие провайдеры
+
+`ctx.tools.register` принимает **готовую JSON Schema**, а не компактную карту
+параметров, которую компилирует `defineTool`. Плагины раньше отдавали карту
+как есть, и это сходило с рук ровно до первого строгого провайдера: Gemini через
+OpenAI-совместимый прокси отвечал `400 INVALID_ARGUMENT` и весь ход падал с
+сообщением, в котором про инструменты не сказано ни слова —
+
+```
+value at top-level must be a string
+value at properties.model.properties.model must be a list
+```
+
+Второе сообщение — про `required`: в `Schema` у Gemini это повторяемое поле
+(список), а объявление `model.provider.required = true` отправляло туда булево.
+
+Теперь каждый плагин компилирует объявления через `lib/tool-schema.js`:
+
+- корень всегда `{type: "object", properties: {…}}`;
+- `required: true` на свойстве любого уровня переезжает в `required: [ … ]`
+  родителя;
+- `additionalProperties` отбрасывается: в `Schema` его нет, а «открытый объект» —
+  поведение JSON Schema по умолчанию;
+- уже готовая схема (например, из MCP) проходит насквозь, список `required`
+  сохраняется и дополняется.
+
+Проверить, что видит провайдер, можно маршрутом:
+
+```sh
+curl -s localhost:3080/api/excalidraw/tool-audit          # что не так и с чем
+curl -s 'localhost:3080/api/excalidraw/tool-audit?schemas=1'   # сами схемы
+```
+
 ## Общая библиотека шаблонов
 
 Библиотека Excalidraw у плагина **одна на всё развёртывание**, а не на браузер:
@@ -158,7 +191,8 @@ ln -sfn ~/deepseek-harness-plugins/dsh-excalidraw \
 ## Проверка
 
 ```sh
-node scripts/host-test.mjs    # API доски, библиотека, манифест, статика, инструменты: 80
+node scripts/host-test.mjs    # API доски, библиотека, манифест, аудит схем, инструменты: 91
+node scripts/schema-test.mjs  # компилятор схем параметров: 21
 node scripts/client-smoke.mjs # обвязка вкладки, пара «файлы + доска»: 34
 npm run test:board            # доска рисуется и принимает правки агента (headless Chrome, нужен живой dsh web)
 ```
