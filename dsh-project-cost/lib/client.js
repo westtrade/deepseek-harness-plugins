@@ -28,7 +28,6 @@ window.__ModuleLoader__.load({
 			"panel.error": "Cost report unavailable: {message}",
 			"panel.updated": "Updated {time}",
 			"panel.balance": "left on providers",
-			"panel.balanceSplit": "Balance — {parts}",
 			"column.directory": "Directory",
 			"column.spent": "Spent",
 			"row.sessions": "{sessions} sessions · {tokens} tokens",
@@ -45,7 +44,6 @@ window.__ModuleLoader__.load({
 			"panel.error": "费用报告不可用：{message}",
 			"panel.updated": "更新于 {time}",
 			"panel.balance": "供应商余额",
-			"panel.balanceSplit": "余额 — {parts}",
 			"column.directory": "目录",
 			"column.spent": "已花费",
 			"row.sessions": "{sessions} 个会话 · {tokens} 令牌",
@@ -82,18 +80,17 @@ window.__ModuleLoader__.load({
 		* tooltip. A provider that answered with nothing keeps its name and a
 		* dash — dropping it would read as "this provider has no credit".
 		*/
-		function balanceTitle(parts, t) {
+		function balanceTitle(parts) {
 			if (!Array.isArray(parts) || parts.length === 0) return null;
 			const known = parts.filter((part) => typeof part?.creditsRub === "number" && Number.isFinite(part.creditsRub));
 			if (known.length === 0) return null;
-			const text = parts.map((part) => {
+			return parts.map((part) => {
 				const name = PROVIDER_NAMES[part?.provider] ?? String(part?.provider ?? "?");
 				const value = typeof part?.creditsRub === "number" && Number.isFinite(part.creditsRub)
 					? formatRub(part.creditsRub)
 					: "—";
 				return `${name}: ${value}`;
 			}).join(" · ");
-			return t === undefined ? text : t("panel.balanceSplit", { parts: text });
 		}
 		/** Fetch one report; throws on transport or status failure. */
 		async function fetchReport() {
@@ -205,7 +202,7 @@ window.__ModuleLoader__.load({
 					row.removeAttribute("title");
 					return;
 				}
-				const split = balanceTitle(state.balanceParts, t);
+				const split = balanceTitle(state.balanceParts);
 				if (split === null) row.removeAttribute("title");
 				else row.setAttribute("title", split);
 				// Spend and the remaining credit read as one pair: "712,86 ₽ / 975,72 ₽".

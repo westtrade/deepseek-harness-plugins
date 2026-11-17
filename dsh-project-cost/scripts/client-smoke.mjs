@@ -130,16 +130,9 @@ if (!source.includes('"context.cost"') || !source.includes('"context.tokens"')) 
 	throw new Error('context cost copy keys must exist in both dictionaries');
 }
 // The sidebar row can show only the summed balance, so the per-provider split
-// lives in its hover text — the copy for it must exist in every locale.
-for (const locale of ['en', 'zh']) {
-	const copy = dicts.copy[locale];
-	if (typeof copy?.['panel.balanceSplit'] !== 'string' || !copy['panel.balanceSplit'].includes('{parts}')) {
-		throw new Error(`${locale} copy must define panel.balanceSplit with a {parts} placeholder`);
-	}
-}
-// ...and it has to be wired to the row's title from the balance parts, not
-// rebuilt from the summed number (which could not name a provider).
-for (const needle of ['balanceTitle(state.balanceParts, t)', 'row.setAttribute("title", split)', 'store.balanceParts = balance.parts']) {
+// lives in its hover text — built from the balance parts, not from the summed
+// number (which could not name a provider).
+for (const needle of ['balanceTitle(state.balanceParts)', 'row.setAttribute("title", split)', 'store.balanceParts = balance.parts']) {
 	if (!source.includes(needle)) throw new Error(`balance split must reach the row tooltip: ${needle}`);
 }
 
