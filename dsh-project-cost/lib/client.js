@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
 			"panel.error": "Cost report unavailable: {message}",
 			"panel.updated": "Updated {time}",
 			"panel.balance": "left on providers",
+			"panel.balanceSplit": "Balance — {parts}",
 			"column.directory": "Directory",
 			"column.spent": "Spent",
 			"row.sessions": "{sessions} sessions · {tokens} tokens",
@@ -44,6 +45,7 @@ window.__ModuleLoader__.load({
 			"panel.error": "费用报告不可用：{message}",
 			"panel.updated": "更新于 {time}",
 			"panel.balance": "供应商余额",
+			"panel.balanceSplit": "余额 — {parts}",
 			"column.directory": "目录",
 			"column.spent": "已花费",
 			"row.sessions": "{sessions} 个会话 · {tokens} 令牌",
@@ -68,6 +70,31 @@ window.__ModuleLoader__.load({
 			const parts = path.split("/").filter((part) => part !== "");
 			return parts.length === 0 ? path : parts[parts.length - 1];
 		}
+		/** Display names for the provider ids the balance route reports. */
+		const PROVIDER_NAMES = {
+			"router-ai": "Router AI",
+			plusvibeapi: "PlusVIBE"
+		};
+		/**
+		* The sidebar row's hover text: each provider's remaining credit, apart.
+		*
+		* The row itself has to show one number, so the split lives in the
+		* tooltip. A provider that answered with nothing keeps its name and a
+		* dash — dropping it would read as "this provider has no credit".
+		*/
+		function balanceTitle(parts, t) {
+			if (!Array.isArray(parts) || parts.length === 0) return null;
+			const known = parts.filter((part) => typeof part?.creditsRub === "number" && Number.isFinite(part.creditsRub));
+			if (known.length === 0) return null;
+			const text = parts.map((part) => {
+				const name = PROVIDER_NAMES[part?.provider] ?? String(part?.provider ?? "?");
+				const value = typeof part?.creditsRub === "number" && Number.isFinite(part.creditsRub)
+					? formatRub(part.creditsRub)
+					: "—";
+				return `${name}: ${value}`;
+			}).join(" · ");
+			return t === undefined ? text : t("panel.balanceSplit", { parts: text });
+		}
 		/** Fetch one report; throws on transport or status failure. */
 		async function fetchReport() {
 			const response = await fetch(REPORT_URL, { cache: "no-store" });
@@ -75,16 +102,18 @@ window.__ModuleLoader__.load({
 			return await response.json();
 		}
 		/**
-		* Fetch the remaining routerai.ru credit. A failure is not an error state
-		* for the meter: the spend report stands on its own, so the caller only
-		* loses the balance suffix.
+		* Fetch the remaining credit across providers. A failure is not an error
+		* state for the meter: the spend report stands on its own, so the caller
+		* only loses the balance suffix. `parts` carries the per-provider split
+		* the row's tooltip shows.
 		*/
 		async function fetchBalance() {
 			try {
 				const response = await fetch(BALANCE_URL, { cache: "no-store" });
 				if (!response.ok) return null;
 				const body = await response.json();
-				return typeof body?.creditsRub === "number" && Number.isFinite(body.creditsRub) ? body.creditsRub : null;
+				if (typeof body?.creditsRub !== "number" || !Number.isFinite(body.creditsRub)) return null;
+				return { creditsRub: body.creditsRub, parts: Array.isArray(body.parts) ? body.parts : [] };
 			} catch {
 				return null;
 			}
@@ -97,6 +126,7 @@ window.__ModuleLoader__.load({
 		const store = {
 			report: null,
 			balanceRub: null,
+			balanceParts: [],
 			error: null,
 			loading: false,
 			listeners: new Set()
@@ -113,9 +143,12 @@ window.__ModuleLoader__.load({
 			store.loading = true;
 			notify();
 			try {
-				const [report, balanceRub] = await Promise.all([fetchReport(), fetchBalance()]);
+				const [report, balance] = await Promise.all([fetchReport(), fetchBalance()]);
 				store.report = report;
-				if (balanceRub !== null) store.balanceRub = balanceRub;
+				if (balance !== null) {
+					store.balanceRub = balance.creditsRub;
+					store.balanceParts = balance.parts;
+				}
 				store.error = null;
 			} catch (error) {
 				store.error = String(error?.message ?? error);
@@ -164,10 +197,17 @@ window.__ModuleLoader__.load({
 				setWide((previous) => previous === isWide ? previous : isWide);
 				row.setAttribute(ROW_ATTR, "panel");
 				const total = state.report?.totals?.costRub;
-				if (total === undefined || total === null || !isWide) {
+				const hasTotal = typeof total === "number" && Number.isFinite(total);
+				if (!hasTotal || !isWide) {
 					row.removeAttribute(TOTAL_ATTR);
+					// The rail wraps the row in its own tooltip, so ours would stack
+					// on top of it; the split belongs to the wide row that shows money.
+					row.removeAttribute("title");
 					return;
 				}
+				const split = balanceTitle(state.balanceParts, t);
+				if (split === null) row.removeAttribute("title");
+				else row.setAttribute("title", split);
 				// Spend and the remaining credit read as one pair: "712,86 ₽ / 975,72 ₽".
 				const balance = state.balanceRub;
 				const label = typeof balance === "number" && Number.isFinite(balance)
