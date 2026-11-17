@@ -21,33 +21,33 @@ window.__ModuleLoader__.load({
 		const REFRESH_MS = 60000;
 		const en = {
 			"panel.title": "Project costs",
-			"panel.subtitle": "Money spent per directory, priced from routerai.ru",
+			"panel.subtitle": "Money spent per directory, priced from your providers",
 			"panel.refresh": "Refresh",
 			"panel.loading": "Loading…",
 			"panel.empty": "No billed model calls yet.",
 			"panel.error": "Cost report unavailable: {message}",
 			"panel.updated": "Updated {time}",
-			"panel.balance": "left on routerai.ru",
+			"panel.balance": "left on providers",
 			"column.directory": "Directory",
 			"column.spent": "Spent",
 			"row.sessions": "{sessions} sessions · {tokens} tokens",
-			"row.unpriced": "not priced by routerai.ru: {models}",
+			"row.unpriced": "not priced by any provider: {models}",
 			"context.cost": "≈ {cost} of context",
 			"context.tokens": "Context: {tokens} tokens"
 		};
 		const zh = {
 			"panel.title": "项目花费",
-			"panel.subtitle": "按目录统计已花费金额，价格来自 routerai.ru",
+			"panel.subtitle": "按目录统计已花费金额，价格来自已配置的供应商",
 			"panel.refresh": "刷新",
 			"panel.loading": "加载中…",
 			"panel.empty": "尚无计费模型调用。",
 			"panel.error": "费用报告不可用：{message}",
 			"panel.updated": "更新于 {time}",
-			"panel.balance": "routerai.ru 余额",
+			"panel.balance": "供应商余额",
 			"column.directory": "目录",
 			"column.spent": "已花费",
 			"row.sessions": "{sessions} 个会话 · {tokens} 令牌",
-			"row.unpriced": "routerai.ru 无定价：{models}",
+			"row.unpriced": "无定价：{models}",
 			"context.cost": "上下文约 {cost}",
 			"context.tokens": "上下文：{tokens} 令牌"
 		};

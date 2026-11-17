@@ -10,10 +10,13 @@
  */
 
 import { buildReport } from '../lib/report.js';
+import { resolveApiKey, PLUSVIBE_API_KEY_ENV } from '../lib/balance.js';
 import { formatRub } from '../lib/cost.js';
 
 const asJson = process.argv.includes('--json');
-const report = await buildReport();
+// The CLI prices both catalogs: plusvibe's needs the account key, which is
+// resolved the same way the host plugin resolves it.
+const report = await buildReport({ plusvibeApiKey: await resolveApiKey(undefined, PLUSVIBE_API_KEY_ENV) });
 
 if (asJson) {
 	console.log(JSON.stringify(report, null, 2));
@@ -42,4 +45,4 @@ for (const row of rows) {
 	if (row.unpriced.length > 0) console.log(`${' '.repeat(widthPath)}  ! unpriced: ${row.unpriced.join(', ')}`);
 }
 console.log(`${pad('TOTAL', widthPath)}  ${padStart(report.totals.sessions, widthSessions)}  ${padStart('', widthTokens)}  ${padStart(formatRub(report.totals.costRub), widthSpent)}`);
-console.log(`\nprices: routerai.ru (${report.pricing.source}${report.pricing.staleError === undefined ? '' : `, stale: ${report.pricing.staleError}`})`);
+console.log(`\nprices: routerai.ru + plusvibeapi.ru (${report.pricing.source}${report.pricing.staleError === undefined ? '' : `, stale: ${report.pricing.staleError}`})`);

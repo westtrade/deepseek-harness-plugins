@@ -10,7 +10,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { fetchBalance, resolveApiKey, DEFAULT_BALANCE_URL } from '../lib/balance.js';
+import { fetchBalance, fetchPlusvibeBalance, resolveApiKey, DEFAULT_BALANCE_URL, DEFAULT_PLUSVIBE_BALANCE_URL, PLUSVIBE_API_KEY_ENV } from '../lib/balance.js';
 
 // Keep the "no key configured" case hermetic: point the harness home at a path
 // with no credentials document and clear the ambient variable, so the real
@@ -58,11 +58,41 @@ try {
 	await assert.rejects(() => fetchBalance({ get: () => ({ resolve: async () => ({ value: 'sk-test' }) }) }), /HTTP 401/u);
 	globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ data: {} }) });
 	await assert.rejects(() => fetchBalance({ get: () => ({ resolve: async () => ({ value: 'sk-test' }) }) }), /shape/u);
+
+	// plusvibeapi.ru answers `{ balance, currency, balance_rub }` on its own
+	// route, and reads the same rubles, so the two readings add up.
+	seen = null;
+	globalThis.fetch = async (url, init) => {
+		seen = { url, auth: init?.headers?.authorization };
+		return { ok: true, status: 200, json: async () => ({ balance: 2099.34, currency: 'RUB', balance_rub: 2099.34 }) };
+	};
+	const plusvibe = await fetchPlusvibeBalance({ get: () => ({ resolve: async () => ({ value: 'sk-pv' }) }) });
+	assert.equal(seen.url, DEFAULT_PLUSVIBE_BALANCE_URL, 'the plusvibe balance route is used');
+	assert.equal(seen.auth, 'Bearer sk-pv', 'the plusvibe key is sent as a bearer token');
+	assert.equal(plusvibe.creditsRub, 2099.34, 'the reading comes from balance_rub');
+	assert.equal(plusvibe.currency, 'RUB', 'plusvibe bills in the same rubles');
+
+	// It resolves its own credential reference, not the routerai one.
+	const askedFor = [];
+	globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ balance: 1 }) });
+	await fetchPlusvibeBalance({ get: (name) => (name === 'credentials' ? { resolve: async (ref) => { askedFor.push(ref); return { value: 'sk-pv' }; } } : undefined) });
+	assert.deepEqual(askedFor, [PLUSVIBE_API_KEY_ENV], 'plusvibe reads its own credential reference');
+
+	// Same degradation rules as the routerai half.
+	await assert.rejects(
+		() => fetchPlusvibeBalance({ get: () => ({ resolve: async () => undefined }) }),
+		(error) => error.code === 'NO_API_KEY' || /not configured/u.test(error.message),
+		'a missing plusvibe key must fail with NO_API_KEY'
+	);
+	globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) });
+	await assert.rejects(() => fetchPlusvibeBalance({ get: () => ({ resolve: async () => ({ value: 'sk-pv' }) }) }), /HTTP 401/u);
+	globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+	await assert.rejects(() => fetchPlusvibeBalance({ get: () => ({ resolve: async () => ({ value: 'sk-pv' }) }) }), /shape/u);
 } finally {
 	globalThis.fetch = realFetch;
 }
 
 console.log('balance wiring OK');
-console.log('  route      :', DEFAULT_BALANCE_URL);
+console.log('  routes     :', DEFAULT_BALANCE_URL, '|', DEFAULT_PLUSVIBE_BALANCE_URL);
 console.log('  key source : credentials service → ~/.dsh/.credentials.yaml → env');
 console.log('  parsing    : data.credits → creditsRub (RUB), NaN and HTTP errors refuse');

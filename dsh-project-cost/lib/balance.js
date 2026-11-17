@@ -21,6 +21,12 @@ export const DEFAULT_BALANCE_URL = 'https://routerai.ru/api/v1/credits';
 /** Environment-variable name whose credential reference holds the API key. */
 export const DEFAULT_API_KEY_ENV = 'ROUTER_AI_API_KEY';
 
+/** Default plusvibeapi.ru balance endpoint. */
+export const DEFAULT_PLUSVIBE_BALANCE_URL = 'https://plusvibeapi.ru/v1/balance';
+
+/** Credential reference holding the plusvibeapi.ru key. */
+export const PLUSVIBE_API_KEY_ENV = 'PLUSVIBEAPI_API_KEY';
+
 /** Resolve the harness home (`$DSH_HOME`, else `~/.dsh`). */
 function harnessHome() {
 	return process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh');
@@ -86,6 +92,36 @@ export async function resolveApiKey(ctx, name = DEFAULT_API_KEY_ENV) {
 	if (fromFile !== undefined) return fromFile;
 	const fromEnv = process.env[name];
 	return typeof fromEnv === 'string' && fromEnv.length > 0 ? fromEnv : undefined;
+}
+
+/**
+ * Fetch the remaining plusvibeapi.ru balance.
+ *
+ * That endpoint answers `{ balance, currency, balance_rub }` in the same rubles
+ * the price list bills in, so the two providers' readings add up directly.
+ *
+ * @param ctx - Host context carrying the optional `credentials` service.
+ * @param options - `{ url, apiKeyEnv, timeoutMs }` overrides.
+ * @returns `{ creditsRub, currency, fetchedAt }`; throws when no key is
+ *   configured or the call fails.
+ */
+export async function fetchPlusvibeBalance(ctx, options = {}) {
+	const url = options.url ?? DEFAULT_PLUSVIBE_BALANCE_URL;
+	const apiKey = await resolveApiKey(ctx, options.apiKeyEnv ?? PLUSVIBE_API_KEY_ENV);
+	if (apiKey === undefined) {
+		const error = new Error('plusvibeapi.ru API key is not configured');
+		error.code = 'NO_API_KEY';
+		throw error;
+	}
+	const response = await fetch(url, {
+		headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json' },
+		signal: AbortSignal.timeout(options.timeoutMs ?? 15000)
+	});
+	if (!response.ok) throw new Error(`plusvibeapi.ru balance: HTTP ${response.status}`);
+	const body = await response.json();
+	const raw = typeof body?.balance_rub === 'number' ? body.balance_rub : typeof body?.balance === 'number' ? body.balance : undefined;
+	if (raw === undefined || !Number.isFinite(raw)) throw new Error('plusvibeapi.ru balance: unexpected response shape');
+	return { creditsRub: raw, currency: 'RUB', fetchedAt: Date.now() };
 }
 
 /**

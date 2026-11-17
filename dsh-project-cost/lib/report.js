@@ -109,7 +109,8 @@ export async function buildReport(options = {}) {
 	const cache = options.cache ?? new Map();
 	const prices = options.prices ?? await loadPrices({
 		url: options.priceUrl,
-		cachePath: options.cachePath ?? defaultPriceCachePath()
+		cachePath: options.cachePath ?? defaultPriceCachePath(),
+		plusvibeApiKey: options.plusvibeApiKey
 	});
 
 	const artifacts = await listSessionArtifacts(sessionsRoot);

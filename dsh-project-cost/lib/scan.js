@@ -132,6 +132,9 @@ const TYPE_PREFIX = /^\{"type":"([^"]+)"/;
 export function foldSessionLog(text) {
 	const lines = text.split('\n');
 	let header = undefined;
+	// The billed route is provider-qualified: both configured providers publish
+	// some of the same model ids at different prices, so a bare id could price a
+	// call against the wrong catalog.
 	let currentModel = '(unknown model)';
 	let inheritedCut = 0;
 	/** @type {{ seq: number, turn: number | undefined, model: string, usage: object }[]} */
@@ -152,7 +155,10 @@ export function foldSessionLog(text) {
 			}
 			if (event.type === 'request/header') {
 				const config = event.data?.header?.config;
-				if (config?.model) currentModel = String(config.model);
+				if (config?.model) {
+					const model = String(config.model);
+					currentModel = typeof config.provider === 'string' && config.provider !== '' ? `${config.provider}/${model}` : model;
+				}
 				continue;
 			}
 			if (event.type !== 'assistant/message') continue;

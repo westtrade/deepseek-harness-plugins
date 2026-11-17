@@ -5,7 +5,8 @@
 ## `dsh-project-cost`
 
 Учёт стоимости проектов: считает потраченные деньги по каждому проекту
-(директории) по ценам [routerai.ru](https://routerai.ru/) и показывает сумму
+(директории) по ценам [routerai.ru](https://routerai.ru/) и
+[plusvibeapi.ru](https://plusvibeapi.ru/) и показывает сумму
 в веб-интерфейсе — **прямо в дереве Workspaces** (бейдж справа в строке
 директории и рядом с временем в строках сессий), **в строке метрик чата**
 (после «Usage … / Ran for … / времени» под каждым ответом ассистента) и в
@@ -18,7 +19,8 @@
 node dsh-project-cost/scripts/report.mjs        # быстро: отчёт в терминале
 node dsh-project-cost/scripts/report.mjs --json # сырой JSON
 node dsh-project-cost/scripts/client-smoke.mjs  # проверка клиентской обвязки
-node dsh-project-cost/scripts/balance-smoke.mjs # баланс: ключ и разбор ответа
+node dsh-project-cost/scripts/balance-smoke.mjs # баланс: оба провайдера
+node dsh-project-cost/scripts/prices-smoke.mjs  # прайс: единицы, ключи, кэш
 ```
 
 Подробности и установка: [dsh-project-cost/README.md](dsh-project-cost/README.md).

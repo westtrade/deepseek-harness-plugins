@@ -19,7 +19,7 @@
 const REV = new URL(import.meta.url).search;
 const { buildReport, defaultSessionsRoot, defaultPriceCachePath } = await import('./report.js' + REV);
 const { loadPrices } = await import('./prices.js' + REV);
-const { fetchBalance, DEFAULT_API_KEY_ENV, DEFAULT_BALANCE_URL } = await import('./balance.js' + REV);
+const { fetchBalance, fetchPlusvibeBalance, resolveApiKey, DEFAULT_API_KEY_ENV, DEFAULT_BALANCE_URL, DEFAULT_PLUSVIBE_BALANCE_URL, PLUSVIBE_API_KEY_ENV } = await import('./balance.js' + REV);
 
 /** Cordis service name for this plugin (also its loader row id). */
 export const name = 'project-cost';
@@ -108,10 +108,13 @@ export function apply(ctx, config = {}) {
 		const now = Date.now();
 		if (pricesCached !== undefined && now - pricesAt < pricesTtlMs) return Promise.resolve(pricesCached);
 		if (pricesInflight !== undefined) return pricesInflight;
-		pricesInflight = loadPrices({
-			url: options.priceUrl,
-			cachePath: options.cachePath
-		}).then((value) => {
+		pricesInflight = resolveApiKey(ctx, PLUSVIBE_API_KEY_ENV)
+			.catch(() => undefined)
+			.then((plusvibeApiKey) => loadPrices({
+				url: options.priceUrl,
+				cachePath: options.cachePath,
+				plusvibeApiKey
+			})).then((value) => {
 			pricesCached = value;
 			pricesAt = Date.now();
 			return value;
@@ -149,18 +152,38 @@ export function apply(ctx, config = {}) {
 	let balanceInflight = undefined;
 	const balanceTtlMs = Number.isFinite(config.balanceTtlMs) ? config.balanceTtlMs : 60000;
 	const balanceUrl = config.balanceUrl ?? DEFAULT_BALANCE_URL;
+	const plusvibeBalanceUrl = config.plusvibeBalanceUrl ?? DEFAULT_PLUSVIBE_BALANCE_URL;
+	const plusvibeApiKeyEnv = config.plusvibeApiKeyEnv ?? PLUSVIBE_API_KEY_ENV;
 	const apiKeyEnv = config.apiKeyEnv ?? DEFAULT_API_KEY_ENV;
 
 	function balance() {
 		const now = Date.now();
 		if (balanceCached !== undefined && now - balanceAt < balanceTtlMs) return Promise.resolve(balanceCached);
 		if (balanceInflight !== undefined) return balanceInflight;
-		balanceInflight = fetchBalance(ctx, { url: balanceUrl, apiKeyEnv, timeoutMs: config.balanceTimeoutMs }).catch((error) => ({
+		const providers = ['router-ai', 'plusvibeapi'];
+		const settle = (provider, call) => call.catch((error) => ({
+			provider,
 			creditsRub: undefined,
-			currency: 'RUB',
-			fetchedAt: Date.now(),
 			unavailable: String(error?.code ?? error?.message ?? error)
-		})).then((value) => {
+		}));
+		// Both providers bill in rubles, so the remaining credit adds up into the
+		// one number the sidebar row shows; `parts` keeps them separable.
+		balanceInflight = Promise.all([
+			settle('router-ai', fetchBalance(ctx, { url: balanceUrl, apiKeyEnv, timeoutMs: config.balanceTimeoutMs })),
+			settle('plusvibeapi', fetchPlusvibeBalance(ctx, { url: plusvibeBalanceUrl, apiKeyEnv: plusvibeApiKeyEnv, timeoutMs: config.balanceTimeoutMs }))
+		]).then((parts) => {
+			const known = parts.filter((part) => typeof part.creditsRub === 'number' && Number.isFinite(part.creditsRub));
+			const missing = parts.filter((part) => !known.includes(part));
+			return {
+				creditsRub: known.length === 0 ? undefined : known.reduce((sum, part) => sum + part.creditsRub, 0),
+				currency: 'RUB',
+				fetchedAt: Date.now(),
+				// A successful reading carries no provider of its own, so the
+				// fixed fetch order names it here.
+				parts: parts.map((part, index) => ({ provider: part.provider ?? providers[index], creditsRub: part.creditsRub, ...(part.unavailable === undefined ? {} : { unavailable: part.unavailable }) })),
+				...(missing.length === 0 ? {} : { unavailable: missing.map((part) => `${part.provider}: ${part.unavailable}`).join('; ') })
+			};
+		}).then((value) => {
 			balanceCached = value;
 			balanceAt = Date.now();
 			return value;
